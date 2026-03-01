@@ -189,10 +189,9 @@ export const compPlanTools = {
             "Initial plan status. 'draft' = not yet live (default), 'active' = currently in use, 'archived' = retired.",
         },
       },
-      required: ["name"],
+      required: [],
     },
     handler: async (args: {
-      name: string;
       plan_type?: string;
       user_id?: string;
       fiscal_year_id?: string;
@@ -209,7 +208,6 @@ export const compPlanTools = {
     }): Promise<ToolResult> => {
       try {
         const body: CreateCompPlanRequest = {
-          name: args.name,
           plan_type: args.plan_type,
           user_id: args.user_id,
           fiscal_year_id: args.fiscal_year_id,

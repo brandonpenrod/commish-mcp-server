@@ -86,7 +86,6 @@ export interface CompPlan {
   updated_at: string;
 }
 export interface CreateCompPlanRequest {
-  name: string;
   plan_type?: string;
   user_id?: string;
   fiscal_year_id?: string;
