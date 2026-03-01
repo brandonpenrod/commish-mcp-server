@@ -113,7 +113,7 @@ export const compPlanTools = {
 
   create_comp_plan: {
     description:
-      "IMPORTANT: Pass all numeric values exactly as provided by the user. Do NOT calculate, derive, or transform commission rates, quotas, or salary figures. If the user says '10% commission rate', pass 0.10 — do not divide target compensation by quota to derive your own rate. Create a new compensation plan. Requires a name. All other fields are optional. Key fields: arr_variable_percentage (ARR commission rate as decimal, e.g. 0.10 = 10%), arr_quota_annual (annual ARR quota in dollars), arr_annual_accelerator (multiplier applied at 100% attainment, e.g. 2.0 = double rate), arr_quarterly_accelerator (multiplier at 75% attainment). Use when setting up a comp plan for a new rep or role.",
+      "Create a new compensation plan. CRITICAL: arr_variable_percentage and wnc_variable_percentage are NOT commission rates — they are WEIGHTS (what portion of variable comp comes from each metric). Example: if variable is $60K and 60% comes from ARR, set arr_variable_percentage=0.60 and wnc_variable_percentage=0.40. The system calculates the actual commission rate automatically (e.g., $36K target / $400K quota = 9% rate). NEVER pass a commission rate here — always pass the weight/split. Pass all numeric values exactly as the user provides them.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -150,12 +150,12 @@ export const compPlanTools = {
         arr_variable_percentage: {
           type: "number",
           description:
-            "ARR commission rate as a decimal (e.g., 0.10 = 10%). Pass the user's stated rate directly. Example: user says '10%' → pass 0.10. Do NOT calculate this from other fields. Applied to ARR amount of qualifying deals. This is the base rate before accelerators.",
+            "ARR WEIGHT — what fraction of variable compensation is tied to ARR. This is NOT a commission rate. Example: if 60% of variable comp comes from ARR, pass 0.60. If 100% from ARR (single metric), pass 1.0. The actual commission rate is calculated by the system (variable × weight / quota).",
         },
         wnc_variable_percentage: {
           type: "number",
           description:
-            "Secondary metric commission rate as a decimal (e.g., 0.08 = 8%). Pass the user's stated rate directly. Example: user says '8%' → pass 0.08. Do NOT calculate this from other fields.",
+            "Secondary metric WEIGHT — what fraction of variable compensation is tied to the secondary metric. NOT a commission rate. Example: if 40% from secondary, pass 0.40. arr_variable_percentage + wnc_variable_percentage should equal 1.0.",
         },
         arr_quota_annual: {
           type: "number",
@@ -249,7 +249,7 @@ export const compPlanTools = {
 
   update_comp_plan: {
     description:
-      "IMPORTANT: Pass all numeric values exactly as provided by the user. Do NOT calculate, derive, or transform commission rates, quotas, or salary figures. If the user says '10% commission rate', pass 0.10 — do not divide target compensation by quota to derive your own rate. Update an existing compensation plan. Only provided fields will be updated — all other fields remain unchanged. Use when adjusting commission rates, quota amounts, accelerator multipliers, assigned user, fiscal year, or plan status. For example: increase arr_variable_percentage, update arr_quota_annual, or set status to 'active'.",
+      "Update an existing compensation plan. CRITICAL: arr_variable_percentage and wnc_variable_percentage are WEIGHTS (portion of variable comp), NOT commission rates. See create_comp_plan for details. Only provided fields will be updated — all other fields remain unchanged.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -284,11 +284,11 @@ export const compPlanTools = {
         arr_variable_percentage: {
           type: "number",
           description:
-            "Updated ARR commission rate as a decimal (e.g., 0.10 = 10%). Pass the user's stated rate directly. Example: user says '10%' → pass 0.10. Do NOT calculate this from other fields.",
+            "Updated ARR WEIGHT — fraction of variable comp tied to ARR. NOT a commission rate. Example: 60% from ARR → 0.60.",
         },
         wnc_variable_percentage: {
           type: "number",
-          description: "Updated secondary metric commission rate as a decimal. Pass the user's stated rate directly. Example: user says '8%' → pass 0.08. Do NOT calculate this from other fields.",
+          description: "Updated secondary metric WEIGHT — fraction of variable comp tied to secondary metric. NOT a commission rate.",
         },
         arr_quota_annual: {
           type: "number",
@@ -480,12 +480,12 @@ export const compPlanTools = {
         arr_variable_percentage: {
           type: "number",
           description:
-            "ARR commission rate as a decimal (e.g., 0.10 = 10%). Pass the user's stated rate directly. Example: user says '10%' → pass 0.10. Do NOT calculate this from other fields. Applied to ARR amount of qualifying deals. This is the base rate before accelerators.",
+            "ARR WEIGHT — what fraction of variable compensation is tied to ARR. This is NOT a commission rate. Example: if 60% of variable comp comes from ARR, pass 0.60. If 100% from ARR (single metric), pass 1.0. The actual commission rate is calculated by the system (variable × weight / quota).",
         },
         wnc_variable_percentage: {
           type: "number",
           description:
-            "Secondary metric commission rate as a decimal (e.g., 0.08 = 8%). Pass the user's stated rate directly. Example: user says '8%' → pass 0.08. Do NOT calculate this from other fields.",
+            "Secondary metric WEIGHT — what fraction of variable compensation is tied to the secondary metric. NOT a commission rate. Example: if 40% from secondary, pass 0.40. arr_variable_percentage + wnc_variable_percentage should equal 1.0.",
         },
         arr_quota_annual: {
           type: "number",
@@ -562,8 +562,9 @@ export const compPlanTools = {
         `OTE: $${((args.base_salary || 0) + (args.variable_compensation || 0)).toLocaleString()}`,
         "",
         "── Primary Metric (ARR) ──",
-        `Commission Rate: ${((args.arr_variable_percentage || 0) * 100).toFixed(1)}%`,
+        `Variable Weight: ${((args.arr_variable_percentage || 0) * 100).toFixed(0)}% of variable comp ($${((args.variable_compensation || 0) * (args.arr_variable_percentage || 0)).toLocaleString()} target)`,
         `Annual Quota: $${(args.arr_quota_annual || 0).toLocaleString()}`,
+        `Effective Commission Rate: ${args.arr_quota_annual ? (((args.variable_compensation || 0) * (args.arr_variable_percentage || 0)) / args.arr_quota_annual * 100).toFixed(2) : 'N/A'}%`,
         `Quarterly Accelerator: ${args.arr_quarterly_accelerator || 1.0}x`,
         `Annual Accelerator: ${args.arr_annual_accelerator || 1.0}x`,
         "",
@@ -572,8 +573,9 @@ export const compPlanTools = {
       if ((args.wnc_variable_percentage || 0) > 0 || (args.wnc_quota_annual || 0) > 0) {
         lines.push(
           "── Secondary Metric ──",
-          `Commission Rate: ${((args.wnc_variable_percentage || 0) * 100).toFixed(1)}%`,
+          `Variable Weight: ${((args.wnc_variable_percentage || 0) * 100).toFixed(0)}% of variable comp ($${((args.variable_compensation || 0) * (args.wnc_variable_percentage || 0)).toLocaleString()} target)`,
           `Annual Quota: $${(args.wnc_quota_annual || 0).toLocaleString()}`,
+          `Effective Commission Rate: ${args.wnc_quota_annual ? (((args.variable_compensation || 0) * (args.wnc_variable_percentage || 0)) / args.wnc_quota_annual * 100).toFixed(2) : 'N/A'}%`,
           `Annual Accelerator: ${args.wnc_annual_accelerator || 1.0}x`,
           ""
         );
