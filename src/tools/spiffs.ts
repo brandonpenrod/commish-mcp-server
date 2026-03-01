@@ -36,7 +36,7 @@ function errorResult(error: unknown): ToolResult {
 export const spiffTools = {
   list_spiffs: {
     description:
-      "List all SPIFFs (Sales Performance Incentive Fund Programs). Returns SPIFF name, bonus type, bonus amount, criteria, eligibility, status (draft/active/paused/completed), start/end dates, and leaderboard if available. Use when a user asks about SPIFFs, bonuses, incentive programs, contests, or leaderboards.",
+      "List all SPIFFs (Sales Performance Incentive Fund Programs). Returns SPIFF name, bonus type, bonus amount, criteria (as JSON), caps (as JSON), eligibility (as JSON), status (draft/active/paused/completed), and start/end dates. Use when a user asks about SPIFFs, bonuses, incentive programs, contests, or leaderboards.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -68,7 +68,7 @@ export const spiffTools = {
 
   get_spiff: {
     description:
-      "Get full details of a specific SPIFF by ID, including bonus configuration, eligibility rules, leaderboard standings, and status. Use when a user wants to see the details or current standings of a specific SPIFF.",
+      "Get full details of a specific SPIFF by ID, including all configuration fields and a leaderboard of earnings by rep (sorted by amount descending). Each leaderboard entry has rep_id, amount, status, and rep info (name, email). Use when a user wants to see the details or current standings of a specific SPIFF.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -93,7 +93,7 @@ export const spiffTools = {
 
   create_spiff: {
     description:
-      "Create a new SPIFF (Sales Performance Incentive Fund Program) to motivate reps with bonus payouts for specific deal activity. Supports per-deal bonuses, flat bonuses, tiered bonuses, and team pool distributions. Set criteria to target specific deal types, ARR thresholds, or deal counts. Use when launching a new sales contest, incentive program, or short-term promotion.",
+      "Create a new SPIFF (Sales Performance Incentive Fund Program) to motivate reps with bonus payouts for specific deal activity. Supports per-deal bonuses, flat bonuses, tiered bonuses, and team pool distributions. The criteria, caps, and eligibility fields are flexible JSON objects — pass whatever structure makes sense for the program. Use when launching a new sales contest, incentive program, or short-term promotion.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -116,65 +116,22 @@ export const spiffTools = {
         bonus_amount: {
           type: "number",
           description:
-            "Bonus amount in dollars. For per_deal: dollars per deal. For flat/team_pool: total pool. For tiered: base tier amount (tiers configured separately).",
+            "Bonus amount in dollars. For per_deal: dollars per deal. For flat/team_pool: total pool amount.",
         },
         criteria: {
           type: "object",
-          description: "Qualifying criteria that deals must meet to count toward this SPIFF.",
-          properties: {
-            deal_type: {
-              type: "string",
-              enum: ["new_business", "renewal", "expansion", "any"],
-              description:
-                "Deal type that qualifies. Use 'any' to count all deal types.",
-            },
-            min_arr: {
-              type: "number",
-              description:
-                "Minimum ARR amount (in dollars) for a deal to qualify. Null for no minimum.",
-            },
-            min_deal_count: {
-              type: "number",
-              description:
-                "Minimum number of qualifying deals before the SPIFF pays out. For flat bonuses: rep must close this many deals to earn the bonus.",
-            },
-          },
-          required: ["deal_type"],
+          description:
+            "JSON object defining qualifying criteria for deals. Common fields: deal_type ('new_business'|'renewal'|'expansion'|'any'), min_arr (minimum ARR amount), min_deal_count (minimum deal count). Example: { \"deal_type\": \"new_business\", \"min_arr\": 25000 }",
         },
         caps: {
           type: "object",
-          description: "Caps to limit total SPIFF payout.",
-          properties: {
-            per_rep: {
-              type: "number",
-              description:
-                "Maximum total payout per individual rep for this SPIFF in dollars. Null for no cap.",
-              nullable: true,
-            },
-            total_budget: {
-              type: "number",
-              description:
-                "Total SPIFF budget in dollars. Once exhausted, no additional payouts are made. Null for no budget limit.",
-              nullable: true,
-            },
-          },
+          description:
+            "JSON object defining payout caps. Common fields: per_rep (max payout per individual rep), total_budget (max total SPIFF spend). Example: { \"per_rep\": 5000, \"total_budget\": 50000 }",
         },
         eligibility: {
           type: "object",
-          description: "Which reps are eligible to participate in this SPIFF.",
-          properties: {
-            all_reps: {
-              type: "boolean",
-              description:
-                "If true, all active reps are eligible. If false, only reps in rep_ids are eligible.",
-            },
-            rep_ids: {
-              type: "array",
-              items: { type: "string" },
-              description:
-                "Specific rep user IDs to include (only used if all_reps is false).",
-            },
-          },
+          description:
+            "JSON object defining which reps are eligible. Common fields: all_reps (boolean), rep_ids (array of user IDs). Example: { \"all_reps\": true } or { \"all_reps\": false, \"rep_ids\": [\"uuid1\", \"uuid2\"] }",
         },
         start_date: {
           type: "string",
@@ -184,29 +141,25 @@ export const spiffTools = {
         end_date: {
           type: "string",
           description:
-            "SPIFF end date in ISO 8601 format (YYYY-MM-DD). Deals must close on or before this date to qualify.",
+            "SPIFF end date in ISO 8601 format (YYYY-MM-DD). Deals must close on or before this date to qualify. Must be after start_date.",
         },
         status: {
           type: "string",
           enum: ["draft", "active"],
           description:
-            "Initial status. 'draft' to save without activating, 'active' to launch immediately.",
+            "Initial status. 'draft' to save without activating, 'active' to launch immediately. Default: 'active'.",
         },
       },
-      required: ["name", "bonus_type", "bonus_amount", "criteria", "start_date", "end_date"],
+      required: ["name", "bonus_type", "bonus_amount", "start_date", "end_date"],
     },
     handler: async (args: {
       name: string;
       description?: string;
       bonus_type: "per_deal" | "flat" | "tiered" | "team_pool";
       bonus_amount: number;
-      criteria: {
-        deal_type: "new_business" | "renewal" | "expansion" | "any";
-        min_arr?: number;
-        min_deal_count?: number;
-      };
-      caps?: { per_rep?: number | null; total_budget?: number | null };
-      eligibility?: { all_reps?: boolean; rep_ids?: string[] };
+      criteria?: Record<string, unknown>;
+      caps?: Record<string, unknown>;
+      eligibility?: Record<string, unknown>;
       start_date: string;
       end_date: string;
       status?: "draft" | "active";
@@ -237,7 +190,7 @@ export const spiffTools = {
 
   update_spiff: {
     description:
-      "Update an existing SPIFF. Only provided fields will be changed. Can update name, description, bonus amount, criteria, caps, eligibility, dates, and status. Use to pause an active SPIFF (set status to 'paused'), adjust bonus amounts, or extend end dates. Cannot update completed SPIFFs.",
+      "Update an existing SPIFF. Only provided fields will be changed. Can update name, description, bonus amount, criteria, caps, eligibility, dates, and status. Use to pause an active SPIFF (set status to 'paused'), adjust bonus amounts, or extend end dates. Cannot update completed SPIFFs (status: 'completed').",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -258,39 +211,23 @@ export const spiffTools = {
         },
         criteria: {
           type: "object",
-          description: "Updated qualifying criteria.",
-          properties: {
-            deal_type: {
-              type: "string",
-              enum: ["new_business", "renewal", "expansion", "any"],
-            },
-            min_arr: { type: "number" },
-            min_deal_count: { type: "number" },
-          },
+          description: "Updated qualifying criteria JSON object.",
         },
         caps: {
           type: "object",
-          description: "Updated payout caps.",
-          properties: {
-            per_rep: { type: "number", nullable: true },
-            total_budget: { type: "number", nullable: true },
-          },
+          description: "Updated payout caps JSON object.",
         },
         eligibility: {
           type: "object",
-          description: "Updated eligibility rules.",
-          properties: {
-            all_reps: { type: "boolean" },
-            rep_ids: { type: "array", items: { type: "string" } },
-          },
+          description: "Updated eligibility rules JSON object.",
         },
         start_date: {
           type: "string",
-          description: "Updated start date in ISO 8601 format.",
+          description: "Updated start date in ISO 8601 format (YYYY-MM-DD).",
         },
         end_date: {
           type: "string",
-          description: "Updated end date in ISO 8601 format.",
+          description: "Updated end date in ISO 8601 format (YYYY-MM-DD). Must be after start_date.",
         },
         status: {
           type: "string",
@@ -307,13 +244,9 @@ export const spiffTools = {
       description?: string;
       bonus_type?: "per_deal" | "flat" | "tiered" | "team_pool";
       bonus_amount?: number;
-      criteria?: {
-        deal_type?: "new_business" | "renewal" | "expansion" | "any";
-        min_arr?: number;
-        min_deal_count?: number;
-      };
-      caps?: { per_rep?: number | null; total_budget?: number | null };
-      eligibility?: { all_reps?: boolean; rep_ids?: string[] };
+      criteria?: Record<string, unknown>;
+      caps?: Record<string, unknown>;
+      eligibility?: Record<string, unknown>;
       start_date?: string;
       end_date?: string;
       status?: "draft" | "active" | "paused";
@@ -344,7 +277,7 @@ export const spiffTools = {
 
   delete_spiff: {
     description:
-      "Delete a SPIFF permanently. Only SPIFFs in 'draft' or 'paused' status can be deleted. Active or completed SPIFFs cannot be deleted to preserve payout records. Use when a SPIFF was created in error or is no longer needed.",
+      "Delete a SPIFF permanently. Only SPIFFs in 'draft' or 'active'/'paused' status (i.e., not 'completed') can be deleted. Completed SPIFFs cannot be deleted to preserve payout records. Use when a SPIFF was created in error or is no longer needed.",
     inputSchema: {
       type: "object" as const,
       properties: {

@@ -20,112 +20,102 @@ export interface CommishApiError {
   };
 }
 
-// --- Deals ---
-export interface Deal {
+// --- Users (backed by `profiles` table) ---
+export interface User {
   id: string;
-  opportunity_name: string;
-  arr_amount: number;
-  total_commission: number;
-  status: "pending" | "approved" | "rejected";
-  rep_id: string;
-  rep_name?: string;
-  close_date: string;
-  notes?: string;
-  deal_type?: "new_business" | "renewal" | "expansion";
+  name: string;
+  email: string;
+  role: string | null;
+  title: string | null;
+  start_date: string | null;
+  is_active: boolean;
+  manager_id: string | null;
   created_at: string;
   updated_at: string;
 }
-export interface CreateDealRequest {
-  opportunity_name: string;
-  arr_amount: number;
-  rep_id?: string;
-  close_date?: string;
-  notes?: string;
-  deal_type?: "new_business" | "renewal" | "expansion";
+export interface CreateUserRequest {
+  name: string;
+  email: string;
+  role?: string;
+  title?: string;
+  start_date?: string;
+  is_active?: boolean;
+  manager_id?: string;
 }
-export interface UpdateDealRequest {
-  opportunity_name?: string;
-  arr_amount?: number;
-  rep_id?: string;
-  close_date?: string;
-  notes?: string;
-  deal_type?: "new_business" | "renewal" | "expansion";
+export interface UpdateUserRequest {
+  name?: string;
+  email?: string;
+  role?: string;
+  title?: string;
+  start_date?: string;
+  is_active?: boolean;
+  manager_id?: string;
 }
 
 // --- Comp Plans ---
-export interface AcceleratorTier {
-  threshold_percent: number;
-  commission_rate: number;
-}
 export interface CompPlan {
   id: string;
+  organization_id: string;
   name: string;
-  plan_type: "standard" | "executive" | "custom";
-  effective_date: string;
-  end_date: string | null;
-  base_commission_rate: number;
-  deal_types: {
-    new_business: number;
-    renewal: number;
-    expansion: number;
-  };
-  quota: {
-    period: "monthly" | "quarterly" | "annual";
-    amount: number;
-  } | null;
-  accelerators: AcceleratorTier[];
-  decelerators: AcceleratorTier[];
-  caps: {
-    per_deal_max: number | null;
-    period_max: number | null;
-  };
-  assigned_users: string[];
+  /** Free-form plan type string, e.g. 'ae', 'sdr', 'manager'. Default: 'ae'. */
+  plan_type: string;
+  user_id: string | null;
+  fiscal_year_id: string | null;
+  /** Total base salary in dollars. */
+  base_salary: number | null;
+  /** Total variable compensation target in dollars. */
+  variable_compensation: number | null;
+  /** ARR commission rate as a decimal (e.g. 0.10 = 10%). */
+  arr_variable_percentage: number | null;
+  /** WNC commission rate as a decimal. */
+  wnc_variable_percentage: number | null;
+  /** Annual ARR quota in dollars. */
+  arr_quota_annual: number | null;
+  /** Annual WNC quota (units/points). */
+  wnc_quota_annual: number | null;
+  /** ARR accelerator multiplier applied at the quarterly milestone (e.g. 1.5 = 1.5×). */
+  arr_quarterly_accelerator: number | null;
+  /** ARR accelerator multiplier applied at 100% annual attainment (e.g. 2.0 = 2×). */
+  arr_annual_accelerator: number | null;
+  /** WNC accelerator multiplier applied at 100% annual attainment. */
+  wnc_annual_accelerator: number | null;
+  status: "draft" | "active" | "archived";
+  user?: { id: string; name: string; email: string; role: string } | null;
+  fiscal_year?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
 export interface CreateCompPlanRequest {
   name: string;
-  plan_type?: "standard" | "executive" | "custom";
-  effective_date: string;
-  end_date?: string | null;
-  base_commission_rate?: number;
-  deal_types: {
-    new_business: number;
-    renewal: number;
-    expansion: number;
-  };
-  quota?: {
-    period: "monthly" | "quarterly" | "annual";
-    amount: number;
-  };
-  accelerators?: AcceleratorTier[];
-  decelerators?: AcceleratorTier[];
-  caps?: {
-    per_deal_max?: number | null;
-    period_max?: number | null;
-  };
+  plan_type?: string;
+  user_id?: string;
+  fiscal_year_id?: string;
+  base_salary?: number;
+  variable_compensation?: number;
+  arr_variable_percentage?: number;
+  wnc_variable_percentage?: number;
+  arr_quota_annual?: number;
+  wnc_quota_annual?: number;
+  arr_quarterly_accelerator?: number;
+  arr_annual_accelerator?: number;
+  wnc_annual_accelerator?: number;
+  status?: "draft" | "active" | "archived";
 }
 export interface UpdateCompPlanRequest {
   name?: string;
-  plan_type?: "standard" | "executive" | "custom";
-  effective_date?: string;
-  end_date?: string | null;
-  base_commission_rate?: number;
-  deal_types?: {
-    new_business?: number;
-    renewal?: number;
-    expansion?: number;
-  };
-  quota?: {
-    period?: "monthly" | "quarterly" | "annual";
-    amount?: number;
-  };
-  accelerators?: AcceleratorTier[];
-  decelerators?: AcceleratorTier[];
-  caps?: {
-    per_deal_max?: number | null;
-    period_max?: number | null;
-  };
+  plan_type?: string;
+  user_id?: string;
+  fiscal_year_id?: string;
+  base_salary?: number;
+  variable_compensation?: number;
+  arr_variable_percentage?: number;
+  wnc_variable_percentage?: number;
+  arr_quota_annual?: number;
+  wnc_quota_annual?: number;
+  arr_quarterly_accelerator?: number;
+  arr_annual_accelerator?: number;
+  wnc_annual_accelerator?: number;
+  status?: "draft" | "active" | "archived";
 }
 export interface AssignCompPlanRequest {
   user_ids: string[];
@@ -135,76 +125,91 @@ export interface CloneCompPlanRequest {
   name: string;
 }
 
-// --- Users ---
-export interface User {
+// --- Deals ---
+export interface Deal {
   id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  role: "ae" | "sdr" | "manager" | "admin";
-  comp_plan_id: string | null;
-  comp_plan_name?: string;
-  status: "active" | "inactive";
-  start_date: string;
+  organization_id: string;
+  user_id: string;
+  comp_plan_id: string;
+  opportunity_name: string;
+  customer_name: string | null;
+  close_date: string;
+  /** Contract term in months. Default: 12. */
+  contract_term: number;
+  arr_amount: number;
+  machine_quantity: number;
+  wnc_weight: number;
+  wnc_points: number;
+  arr_commission: number;
+  wnc_commission: number;
+  total_commission: number;
+  deal_type: "new_business" | "renewal" | "expansion";
+  primary_metric_value: number;
+  secondary_metric_value: number;
+  notes: string | null;
+  status: "draft" | "pending" | "approved" | "rejected";
+  is_sandbox: boolean;
+  custom_fields: Record<string, unknown> | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
   created_at: string;
   updated_at: string;
 }
-export interface CreateUserRequest {
-  first_name: string;
-  last_name: string;
-  email: string;
-  role?: "ae" | "sdr" | "manager" | "admin";
-  comp_plan_id?: string;
-  start_date?: string;
+export interface CreateDealRequest {
+  comp_plan_id: string;
+  opportunity_name: string;
+  customer_name?: string;
+  close_date: string;
+  contract_term?: number;
+  arr_amount?: number;
+  notes?: string;
+  deal_type?: "new_business" | "renewal" | "expansion";
+  primary_metric_value?: number;
+  secondary_metric_value?: number;
+  custom_fields?: Record<string, unknown>;
 }
-export interface UpdateUserRequest {
-  first_name?: string;
-  last_name?: string;
-  email?: string;
-  role?: "ae" | "sdr" | "manager" | "admin";
-  comp_plan_id?: string;
-  status?: "active" | "inactive";
+export interface UpdateDealRequest {
+  opportunity_name?: string;
+  customer_name?: string;
+  close_date?: string;
+  contract_term?: number;
+  arr_amount?: number;
+  notes?: string;
+  deal_type?: "new_business" | "renewal" | "expansion";
+  primary_metric_value?: number;
+  secondary_metric_value?: number;
+  custom_fields?: Record<string, unknown>;
 }
 
 // --- Commissions ---
+/** Commission records are derived from approved deals. */
 export interface Commission {
   id: string;
-  deal_id: string;
-  deal_name: string;
   user_id: string;
-  rep_name: string;
-  arr_amount: number;
-  commission_amount: number;
-  commission_rate: number;
-  accelerator_applied?: string;
-  status: "calculated" | "paid" | "pending";
-  period: string;
-  created_at: string;
+  comp_plan_id: string;
+  opportunity_name: string;
+  close_date: string;
+  total_commission: number;
+  arr_commission: number;
+  wnc_commission: number;
+  primary_commission?: number;
+  secondary_commission?: number;
+  status: string;
 }
 export interface CommissionSummary {
-  total_commissions: number;
   total_paid: number;
   total_pending: number;
-  total_deals: number;
-  average_commission: number;
-  by_rep: Array<{
-    user_id: string;
-    rep_name: string;
-    total_commission: number;
-    deal_count: number;
-  }>;
-  by_period: Array<{
-    period: string;
-    total_commission: number;
-    deal_count: number;
-  }>;
+  approved_deal_count: number;
+  pending_deal_count: number;
+  /** Keyed by YYYY-MM month string, value is total commission for that month. */
+  by_month: Record<string, number>;
 }
 export interface SimulateCommissionRequest {
   user_id: string;
   comp_plan_id?: string;
   deals: Array<{
     arr_amount: number;
-    deal_type: "new_business" | "renewal" | "expansion";
+    deal_type?: "new_business" | "renewal" | "expansion";
   }>;
   include_existing?: boolean;
 }
@@ -233,31 +238,25 @@ export interface SimulateCommissionResponse {
 // --- SPIFFs ---
 export interface Spiff {
   id: string;
+  organization_id: string;
   name: string;
-  description: string;
+  description: string | null;
   bonus_type: "per_deal" | "flat" | "tiered" | "team_pool";
   bonus_amount: number;
-  criteria: {
-    deal_type: "new_business" | "renewal" | "expansion" | "any";
-    min_arr: number | null;
-    min_deal_count: number | null;
-  };
-  caps: {
-    per_rep: number | null;
-    total_budget: number | null;
-  };
-  eligibility: {
-    all_reps: boolean;
-    rep_ids: string[];
-  };
+  /** JSON object storing qualifying criteria (deal_type, min_arr, min_deal_count, etc.). */
+  criteria: Record<string, unknown> | null;
+  /** JSON object storing payout caps (per_rep, total_budget, etc.). */
+  caps: Record<string, unknown> | null;
+  /** JSON object storing eligibility rules (all_reps, rep_ids, etc.). */
+  eligibility: Record<string, unknown> | null;
   start_date: string;
   end_date: string;
   status: "draft" | "active" | "paused" | "completed";
   leaderboard?: Array<{
-    user_id: string;
-    rep_name: string;
-    qualifying_deals: number;
-    earned: number;
+    rep_id: string;
+    amount: number;
+    status: string;
+    rep?: { id: string; name: string; email: string };
   }>;
   created_at: string;
   updated_at: string;
@@ -267,19 +266,9 @@ export interface CreateSpiffRequest {
   description?: string;
   bonus_type: "per_deal" | "flat" | "tiered" | "team_pool";
   bonus_amount: number;
-  criteria: {
-    deal_type: "new_business" | "renewal" | "expansion" | "any";
-    min_arr?: number;
-    min_deal_count?: number;
-  };
-  caps?: {
-    per_rep?: number | null;
-    total_budget?: number | null;
-  };
-  eligibility?: {
-    all_reps?: boolean;
-    rep_ids?: string[];
-  };
+  criteria?: Record<string, unknown>;
+  caps?: Record<string, unknown>;
+  eligibility?: Record<string, unknown>;
   start_date: string;
   end_date: string;
   status?: "draft" | "active";
@@ -289,31 +278,24 @@ export interface UpdateSpiffRequest {
   description?: string;
   bonus_type?: "per_deal" | "flat" | "tiered" | "team_pool";
   bonus_amount?: number;
-  criteria?: {
-    deal_type?: "new_business" | "renewal" | "expansion" | "any";
-    min_arr?: number;
-    min_deal_count?: number;
-  };
-  caps?: {
-    per_rep?: number | null;
-    total_budget?: number | null;
-  };
-  eligibility?: {
-    all_reps?: boolean;
-    rep_ids?: string[];
-  };
+  criteria?: Record<string, unknown>;
+  caps?: Record<string, unknown>;
+  eligibility?: Record<string, unknown>;
   start_date?: string;
   end_date?: string;
   status?: "draft" | "active" | "paused";
 }
 
-// --- Webhooks ---
+// --- Webhooks (backed by `webhook_subscriptions` table) ---
 export interface Webhook {
   id: string;
   url: string;
   events: WebhookEvent[];
-  status: "active" | "inactive";
+  /** Whether the webhook is currently active. */
+  is_active: boolean;
   created_at: string;
+  /** Only returned on creation — the HMAC signing secret for verifying payloads. */
+  secret?: string;
 }
 export type WebhookEvent =
   | "deal.created"

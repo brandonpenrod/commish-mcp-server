@@ -34,7 +34,7 @@ function errorResult(error: unknown): ToolResult {
 export const webhookTools = {
   list_webhooks: {
     description:
-      "List all configured webhooks for the Commish organization. Returns webhook URL, subscribed events, status (active/inactive), and creation date. Use when a user wants to see what integrations are set up or what systems are being notified of Commish events.",
+      "List all configured webhook subscriptions for the Commish organization. Returns webhook id, url, subscribed events, is_active status, and creation date. Use when a user wants to see what integrations are set up or what external systems are being notified of Commish events.",
     inputSchema: {
       type: "object" as const,
       properties: {},
@@ -51,14 +51,14 @@ export const webhookTools = {
 
   create_webhook: {
     description:
-      "Create a new webhook to receive real-time notifications when events occur in Commish. Subscribe to deal events (created/approved/rejected), commission calculations, and SPIFF completions. Use when integrating Commish with Slack, Zapier, a CRM, or a custom backend system.",
+      "Create a new webhook subscription to receive real-time POST notifications when events occur in Commish. On success, returns the webhook record including a one-time signing secret (secret field, starts with 'whsec_') — save this immediately as it cannot be retrieved again. Use this secret to verify the HMAC signature of incoming webhook payloads. Use when integrating Commish with Slack, Zapier, a CRM, or a custom backend.",
     inputSchema: {
       type: "object" as const,
       properties: {
         url: {
           type: "string",
           description:
-            "The HTTPS endpoint URL that will receive POST requests when events occur. Must be publicly accessible and return a 2xx response within 10 seconds.",
+            "The HTTPS endpoint URL that will receive POST requests when events occur. Must be publicly accessible and return a 2xx response.",
         },
         events: {
           type: "array",
@@ -73,7 +73,7 @@ export const webhookTools = {
             ],
           },
           description:
-            "Array of event types to subscribe to. Available events: 'deal.created' (new deal logged), 'deal.approved' (deal approved by admin), 'deal.rejected' (deal rejected), 'commission.calculated' (commission computed after deal approval), 'spiff.completed' (SPIFF program ended and payouts finalized).",
+            "Array of event types to subscribe to. Available events: 'deal.created' (new deal logged), 'deal.approved' (deal approved by admin), 'deal.rejected' (deal rejected), 'commission.calculated' (commission computed after deal approval), 'spiff.completed' (SPIFF program ended and payouts finalized). Invalid event types are silently filtered out.",
         },
       },
       required: ["url", "events"],
@@ -87,7 +87,7 @@ export const webhookTools = {
           url: args.url,
           events: args.events,
         };
-        const result = await commishClient.post<Webhook>("/webhooks", body);
+        const result = await commishClient.post<{ data: Webhook }>("/webhooks", body);
         return successResult(result);
       } catch (error) {
         return errorResult(error);
@@ -97,23 +97,21 @@ export const webhookTools = {
 
   delete_webhook: {
     description:
-      "Delete a webhook endpoint. The endpoint will stop receiving event notifications immediately. Use when an integration is no longer needed or a webhook URL has changed.",
+      "Delete a webhook subscription. The endpoint will immediately stop receiving event notifications. Use when an integration is no longer needed or a webhook URL has changed (delete and recreate with the new URL).",
     inputSchema: {
       type: "object" as const,
       properties: {
         id: {
           type: "string",
-          description: "The unique webhook ID to delete.",
+          description: "The unique webhook subscription ID to delete.",
         },
       },
       required: ["id"],
     },
     handler: async (args: { id: string }): Promise<ToolResult> => {
       try {
-        await commishClient.delete<unknown>(`/webhooks/${args.id}`);
-        return {
-          content: [{ type: "text", text: "Webhook successfully deleted." }],
-        };
+        const result = await commishClient.delete<unknown>(`/webhooks/${args.id}`);
+        return successResult(result);
       } catch (error) {
         return errorResult(error);
       }

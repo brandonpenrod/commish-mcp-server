@@ -38,10 +38,21 @@ function errorResult(error: unknown): ToolResult {
 export const compPlanTools = {
   list_comp_plans: {
     description:
-      "List all compensation plans. Returns plan name, type (standard/executive/custom), base commission rate, deal type rates, quota, accelerators, decelerators, and assigned users. Use this when a user asks about comp plans, what commission structures exist, or wants to see all available plans.",
+      "List all compensation plans. Returns plan name, type, ARR/WNC commission rates, quota amounts, accelerator multipliers, assigned user, and status (draft/active/archived). Use when a user asks about comp plans, what commission structures exist, or wants to see all available plans. Filter by status or user_id to narrow results.",
     inputSchema: {
       type: "object" as const,
       properties: {
+        status: {
+          type: "string",
+          enum: ["draft", "active", "archived"],
+          description:
+            "Filter by plan status. 'draft' = not yet live, 'active' = currently in use, 'archived' = retired plans.",
+        },
+        user_id: {
+          type: "string",
+          description:
+            "Filter comp plans assigned to a specific user ID. Use list_users to find user IDs.",
+        },
         page: {
           type: "number",
           description: "Page number for pagination (default: 1).",
@@ -53,13 +64,20 @@ export const compPlanTools = {
       },
     },
     handler: async (args: {
+      status?: string;
+      user_id?: string;
       page?: number;
       per_page?: number;
     }): Promise<ToolResult> => {
       try {
         const result = await commishClient.get<PaginatedResponse<CompPlan>>(
           "/comp-plans",
-          { page: args.page, per_page: args.per_page }
+          {
+            status: args.status,
+            user_id: args.user_id,
+            page: args.page,
+            per_page: args.per_page,
+          }
         );
         return successResult(result);
       } catch (error) {
@@ -70,7 +88,7 @@ export const compPlanTools = {
 
   get_comp_plan: {
     description:
-      "Get complete details of a single compensation plan by ID. Returns all configuration including deal type rates, quota settings, accelerator tiers, decelerator tiers, caps, and assigned users. Use when a user wants to see the full details of a specific plan.",
+      "Get complete details of a single compensation plan by ID. Returns all configuration: plan type, base salary, variable compensation target, ARR commission rate (arr_variable_percentage), WNC commission rate (wnc_variable_percentage), annual ARR quota (arr_quota_annual), accelerator multipliers, assigned user, and status. Use when a user wants to see the full details of a specific plan.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -95,171 +113,116 @@ export const compPlanTools = {
 
   create_comp_plan: {
     description:
-      "Create a new compensation plan with full configuration including base rates, deal type rates, quota, accelerators, decelerators, and commission caps. Use when a user wants to set up a new comp plan for their sales team or a new role.",
+      "Create a new compensation plan. Requires a name. All other fields are optional. Key fields: arr_variable_percentage (ARR commission rate as decimal, e.g. 0.10 = 10%), arr_quota_annual (annual ARR quota in dollars), arr_annual_accelerator (multiplier applied at 100% attainment, e.g. 2.0 = double rate), arr_quarterly_accelerator (multiplier at 75% attainment). WNC equivalents also available. Use when setting up a comp plan for a new rep or role.",
     inputSchema: {
       type: "object" as const,
       properties: {
         name: {
           type: "string",
           description:
-            "Name of the compensation plan (e.g., 'AE Standard Plan Q1 2025', 'Enterprise AE Plan').",
+            "Name of the compensation plan (e.g., 'AE Standard Plan FY2025', 'Enterprise AE Plan').",
         },
         plan_type: {
           type: "string",
-          enum: ["standard", "executive", "custom"],
           description:
-            "Type of plan. 'standard' = typical AE/SDR plan, 'executive' = VP/Director level plan, 'custom' = fully custom structure.",
+            "Plan type identifier (e.g., 'ae', 'sdr', 'manager'). Default: 'ae'. Free-form string for categorization.",
         },
-        effective_date: {
+        user_id: {
           type: "string",
           description:
-            "Date the plan becomes effective in ISO 8601 format (YYYY-MM-DD). Required.",
+            "ID of the user (rep) this plan is assigned to. Can be left unset and assigned later via assign_comp_plan.",
         },
-        end_date: {
+        fiscal_year_id: {
           type: "string",
           description:
-            "Date the plan expires in ISO 8601 format (YYYY-MM-DD). Null or omit for open-ended plans.",
-          nullable: true,
+            "ID of the fiscal year this plan belongs to. Optional — used to group plans by fiscal period.",
         },
-        base_commission_rate: {
+        base_salary: {
           type: "number",
           description:
-            "Base commission rate as a decimal (e.g., 0.10 = 10%, 0.08 = 8%). This is the default rate before deal-type-specific rates or accelerators apply.",
+            "Annual base salary in dollars (e.g., 80000 for $80,000). Used for total compensation calculations.",
         },
-        deal_types: {
-          type: "object",
+        variable_compensation: {
+          type: "number",
           description:
-            "Commission rates per deal type as decimals. These override the base rate for specific deal types.",
-          properties: {
-            new_business: {
-              type: "number",
-              description:
-                "Commission rate for new customer deals as a decimal (e.g., 0.10 = 10%).",
-            },
-            renewal: {
-              type: "number",
-              description:
-                "Commission rate for renewal deals as a decimal (e.g., 0.05 = 5%, typically lower than new business).",
-            },
-            expansion: {
-              type: "number",
-              description:
-                "Commission rate for expansion/upsell deals as a decimal (e.g., 0.08 = 8%).",
-            },
-          },
-          required: ["new_business", "renewal", "expansion"],
+            "Target variable compensation in dollars at 100% quota attainment (e.g., 80000 for $80K OTE variable).",
         },
-        quota: {
-          type: "object",
+        arr_variable_percentage: {
+          type: "number",
           description:
-            "Quota configuration. Used to calculate attainment percentage and trigger accelerators/decelerators.",
-          properties: {
-            period: {
-              type: "string",
-              enum: ["monthly", "quarterly", "annual"],
-              description: "Quota measurement period.",
-            },
-            amount: {
-              type: "number",
-              description:
-                "Quota amount in dollars of ARR (e.g., 500000 for $500K quota).",
-            },
-          },
-          required: ["period", "amount"],
+            "ARR commission rate as a decimal (e.g., 0.10 = 10%). Applied to ARR amount of qualifying deals. This is the base rate before accelerators.",
         },
-        accelerators: {
-          type: "array",
+        wnc_variable_percentage: {
+          type: "number",
           description:
-            "Accelerator tiers that increase commission rates when quota attainment exceeds thresholds. List in ascending threshold order.",
-          items: {
-            type: "object",
-            properties: {
-              threshold_percent: {
-                type: "number",
-                description:
-                  "Quota attainment percentage to trigger this accelerator (e.g., 100 = 100% of quota, 125 = 125%).",
-              },
-              commission_rate: {
-                type: "number",
-                description:
-                  "Commission rate to apply above this threshold as a decimal (e.g., 0.15 = 15%).",
-              },
-            },
-            required: ["threshold_percent", "commission_rate"],
-          },
+            "WNC (Wins & Contracts) commission rate as a decimal. Applied to WNC points on qualifying deals.",
         },
-        decelerators: {
-          type: "array",
+        arr_quota_annual: {
+          type: "number",
           description:
-            "Decelerator tiers that reduce commission rates when quota attainment is below thresholds. List in descending threshold order.",
-          items: {
-            type: "object",
-            properties: {
-              threshold_percent: {
-                type: "number",
-                description:
-                  "Quota attainment percentage below which this decelerator applies (e.g., 50 = below 50% of quota).",
-              },
-              commission_rate: {
-                type: "number",
-                description:
-                  "Reduced commission rate as a decimal (e.g., 0.05 = 5%).",
-              },
-            },
-            required: ["threshold_percent", "commission_rate"],
-          },
+            "Annual ARR quota in dollars (e.g., 1000000 for $1M quota). Used to calculate attainment percentage and trigger accelerators.",
         },
-        caps: {
-          type: "object",
-          description: "Commission caps to limit maximum payout.",
-          properties: {
-            per_deal_max: {
-              type: "number",
-              description:
-                "Maximum commission payout per individual deal in dollars. Null for no per-deal cap.",
-              nullable: true,
-            },
-            period_max: {
-              type: "number",
-              description:
-                "Maximum total commission payout for the entire quota period in dollars. Null for no period cap.",
-              nullable: true,
-            },
-          },
+        wnc_quota_annual: {
+          type: "number",
+          description:
+            "Annual WNC quota (units or points). Used to calculate WNC attainment percentage.",
+        },
+        arr_quarterly_accelerator: {
+          type: "number",
+          description:
+            "ARR accelerator multiplier applied when quarterly attainment milestone is hit (e.g., 1.5 = 1.5× the base ARR rate). Typical range: 1.0–3.0.",
+        },
+        arr_annual_accelerator: {
+          type: "number",
+          description:
+            "ARR accelerator multiplier applied when 100% annual quota is reached (e.g., 2.0 = double the base ARR rate). Typical range: 1.0–3.0.",
+        },
+        wnc_annual_accelerator: {
+          type: "number",
+          description:
+            "WNC accelerator multiplier applied when 100% annual WNC quota is reached (e.g., 2.0 = double the base WNC rate).",
+        },
+        status: {
+          type: "string",
+          enum: ["draft", "active", "archived"],
+          description:
+            "Initial plan status. 'draft' = not yet live (default), 'active' = currently in use, 'archived' = retired.",
         },
       },
-      required: ["name", "effective_date", "deal_types"],
+      required: ["name"],
     },
     handler: async (args: {
       name: string;
-      plan_type?: "standard" | "executive" | "custom";
-      effective_date: string;
-      end_date?: string | null;
-      base_commission_rate?: number;
-      deal_types: { new_business: number; renewal: number; expansion: number };
-      quota?: { period: "monthly" | "quarterly" | "annual"; amount: number };
-      accelerators?: Array<{
-        threshold_percent: number;
-        commission_rate: number;
-      }>;
-      decelerators?: Array<{
-        threshold_percent: number;
-        commission_rate: number;
-      }>;
-      caps?: { per_deal_max?: number | null; period_max?: number | null };
+      plan_type?: string;
+      user_id?: string;
+      fiscal_year_id?: string;
+      base_salary?: number;
+      variable_compensation?: number;
+      arr_variable_percentage?: number;
+      wnc_variable_percentage?: number;
+      arr_quota_annual?: number;
+      wnc_quota_annual?: number;
+      arr_quarterly_accelerator?: number;
+      arr_annual_accelerator?: number;
+      wnc_annual_accelerator?: number;
+      status?: "draft" | "active" | "archived";
     }): Promise<ToolResult> => {
       try {
         const body: CreateCompPlanRequest = {
           name: args.name,
           plan_type: args.plan_type,
-          effective_date: args.effective_date,
-          end_date: args.end_date,
-          base_commission_rate: args.base_commission_rate,
-          deal_types: args.deal_types,
-          quota: args.quota,
-          accelerators: args.accelerators,
-          decelerators: args.decelerators,
-          caps: args.caps,
+          user_id: args.user_id,
+          fiscal_year_id: args.fiscal_year_id,
+          base_salary: args.base_salary,
+          variable_compensation: args.variable_compensation,
+          arr_variable_percentage: args.arr_variable_percentage,
+          wnc_variable_percentage: args.wnc_variable_percentage,
+          arr_quota_annual: args.arr_quota_annual,
+          wnc_quota_annual: args.wnc_quota_annual,
+          arr_quarterly_accelerator: args.arr_quarterly_accelerator,
+          arr_annual_accelerator: args.arr_annual_accelerator,
+          wnc_annual_accelerator: args.wnc_annual_accelerator,
+          status: args.status,
         };
         const result = await commishClient.post<SingleResponse<CompPlan>>(
           "/comp-plans",
@@ -274,7 +237,7 @@ export const compPlanTools = {
 
   update_comp_plan: {
     description:
-      "Update an existing compensation plan. Only provided fields will be updated — all other fields remain unchanged. Use when a user wants to adjust rates, quotas, accelerators, or any other aspect of an existing plan.",
+      "Update an existing compensation plan. Only provided fields will be updated — all other fields remain unchanged. Use when adjusting commission rates, quota amounts, accelerator multipliers, assigned user, fiscal year, or plan status. For example: increase arr_variable_percentage, update arr_quota_annual, or set status to 'active'.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -288,68 +251,58 @@ export const compPlanTools = {
         },
         plan_type: {
           type: "string",
-          enum: ["standard", "executive", "custom"],
-          description: "Updated plan type.",
+          description: "Updated plan type identifier (e.g., 'ae', 'sdr', 'manager').",
         },
-        effective_date: {
+        user_id: {
           type: "string",
-          description: "Updated effective date in ISO 8601 format (YYYY-MM-DD).",
+          description: "Updated user ID to (re)assign the plan to.",
         },
-        end_date: {
+        fiscal_year_id: {
           type: "string",
-          description: "Updated end date in ISO 8601 format (YYYY-MM-DD). Set to null to remove the end date.",
-          nullable: true,
+          description: "Updated fiscal year ID.",
         },
-        base_commission_rate: {
+        base_salary: {
           type: "number",
-          description: "Updated base commission rate as a decimal (e.g., 0.10 = 10%).",
+          description: "Updated annual base salary in dollars.",
         },
-        deal_types: {
-          type: "object",
-          description: "Updated deal type commission rates (partial update supported).",
-          properties: {
-            new_business: { type: "number", description: "New business rate as decimal." },
-            renewal: { type: "number", description: "Renewal rate as decimal." },
-            expansion: { type: "number", description: "Expansion rate as decimal." },
-          },
+        variable_compensation: {
+          type: "number",
+          description: "Updated variable compensation target in dollars.",
         },
-        quota: {
-          type: "object",
-          description: "Updated quota configuration.",
-          properties: {
-            period: { type: "string", enum: ["monthly", "quarterly", "annual"] },
-            amount: { type: "number", description: "Quota amount in dollars." },
-          },
+        arr_variable_percentage: {
+          type: "number",
+          description:
+            "Updated ARR commission rate as a decimal (e.g., 0.10 = 10%).",
         },
-        accelerators: {
-          type: "array",
-          description: "Replacement accelerator tiers (replaces all existing accelerators).",
-          items: {
-            type: "object",
-            properties: {
-              threshold_percent: { type: "number" },
-              commission_rate: { type: "number" },
-            },
-          },
+        wnc_variable_percentage: {
+          type: "number",
+          description: "Updated WNC commission rate as a decimal.",
         },
-        decelerators: {
-          type: "array",
-          description: "Replacement decelerator tiers (replaces all existing decelerators).",
-          items: {
-            type: "object",
-            properties: {
-              threshold_percent: { type: "number" },
-              commission_rate: { type: "number" },
-            },
-          },
+        arr_quota_annual: {
+          type: "number",
+          description: "Updated annual ARR quota in dollars.",
         },
-        caps: {
-          type: "object",
-          description: "Updated commission caps.",
-          properties: {
-            per_deal_max: { type: "number", nullable: true },
-            period_max: { type: "number", nullable: true },
-          },
+        wnc_quota_annual: {
+          type: "number",
+          description: "Updated annual WNC quota.",
+        },
+        arr_quarterly_accelerator: {
+          type: "number",
+          description: "Updated ARR quarterly accelerator multiplier.",
+        },
+        arr_annual_accelerator: {
+          type: "number",
+          description: "Updated ARR annual accelerator multiplier.",
+        },
+        wnc_annual_accelerator: {
+          type: "number",
+          description: "Updated WNC annual accelerator multiplier.",
+        },
+        status: {
+          type: "string",
+          enum: ["draft", "active", "archived"],
+          description:
+            "Updated plan status. Set to 'active' to make the plan live, 'archived' to retire it.",
         },
       },
       required: ["id"],
@@ -357,28 +310,36 @@ export const compPlanTools = {
     handler: async (args: {
       id: string;
       name?: string;
-      plan_type?: "standard" | "executive" | "custom";
-      effective_date?: string;
-      end_date?: string | null;
-      base_commission_rate?: number;
-      deal_types?: { new_business?: number; renewal?: number; expansion?: number };
-      quota?: { period?: "monthly" | "quarterly" | "annual"; amount?: number };
-      accelerators?: Array<{ threshold_percent: number; commission_rate: number }>;
-      decelerators?: Array<{ threshold_percent: number; commission_rate: number }>;
-      caps?: { per_deal_max?: number | null; period_max?: number | null };
+      plan_type?: string;
+      user_id?: string;
+      fiscal_year_id?: string;
+      base_salary?: number;
+      variable_compensation?: number;
+      arr_variable_percentage?: number;
+      wnc_variable_percentage?: number;
+      arr_quota_annual?: number;
+      wnc_quota_annual?: number;
+      arr_quarterly_accelerator?: number;
+      arr_annual_accelerator?: number;
+      wnc_annual_accelerator?: number;
+      status?: "draft" | "active" | "archived";
     }): Promise<ToolResult> => {
       try {
         const body: UpdateCompPlanRequest = {
           name: args.name,
           plan_type: args.plan_type,
-          effective_date: args.effective_date,
-          end_date: args.end_date,
-          base_commission_rate: args.base_commission_rate,
-          deal_types: args.deal_types,
-          quota: args.quota,
-          accelerators: args.accelerators,
-          decelerators: args.decelerators,
-          caps: args.caps,
+          user_id: args.user_id,
+          fiscal_year_id: args.fiscal_year_id,
+          base_salary: args.base_salary,
+          variable_compensation: args.variable_compensation,
+          arr_variable_percentage: args.arr_variable_percentage,
+          wnc_variable_percentage: args.wnc_variable_percentage,
+          arr_quota_annual: args.arr_quota_annual,
+          wnc_quota_annual: args.wnc_quota_annual,
+          arr_quarterly_accelerator: args.arr_quarterly_accelerator,
+          arr_annual_accelerator: args.arr_annual_accelerator,
+          wnc_annual_accelerator: args.wnc_annual_accelerator,
+          status: args.status,
         };
         const result = await commishClient.patch<SingleResponse<CompPlan>>(
           `/comp-plans/${args.id}`,
@@ -393,7 +354,7 @@ export const compPlanTools = {
 
   assign_comp_plan: {
     description:
-      "Assign a compensation plan to one or more users, effective from a specified date. This determines which comp plan governs commission calculations for those users going forward. Use when onboarding a new rep, promoting someone to a new role, or rolling out a new comp plan to a team.",
+      "Assign a compensation plan to one or more users, effective from a specified date. The system will archive any existing active comp plan for each user and clone the source plan for them. Use when onboarding a new rep, promoting someone to a new role, or rolling out a new comp plan to a team.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -438,7 +399,7 @@ export const compPlanTools = {
 
   clone_comp_plan: {
     description:
-      "Clone an existing compensation plan with a new name. All settings (rates, quota, accelerators, decelerators, caps) are copied to the new plan. The new plan starts unassigned. Use when creating a variation of an existing plan or preparing a plan for a new quarter with minor adjustments.",
+      "Clone an existing compensation plan with a new name. All settings (commission rates, quota amounts, accelerator multipliers, plan type, fiscal year) are copied to the new plan, which starts as a 'draft' with no user assigned. Use when creating a variation of an existing plan or preparing a plan for a new fiscal period with minor adjustments.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -449,7 +410,7 @@ export const compPlanTools = {
         name: {
           type: "string",
           description:
-            "Name for the new cloned plan (e.g., 'AE Standard Plan Q2 2025').",
+            "Name for the new cloned plan (e.g., 'AE Standard Plan FY2026').",
         },
       },
       required: ["id", "name"],

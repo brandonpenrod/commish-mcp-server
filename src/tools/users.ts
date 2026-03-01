@@ -37,10 +37,20 @@ function errorResult(error: unknown): ToolResult {
 export const userTools = {
   list_users: {
     description:
-      "List all sales reps and users in the Commish organization. Returns name, email, role (ae/sdr/manager/admin), assigned comp plan, status (active/inactive), and start date. Use when the user asks about team members, wants to find a rep's ID, or wants to see who is on the team.",
+      "List all sales reps and users in the Commish organization. Returns name (single field, not split), email, role, title, start date, is_active status, and manager_id. Use when the user asks about team members, wants to find a rep's ID, or wants to see who is on the team. Filter by role (ae/sdr/manager/admin) or is_active (true/false).",
     inputSchema: {
       type: "object" as const,
       properties: {
+        role: {
+          type: "string",
+          description:
+            "Filter by user role: 'ae' = Account Executive, 'sdr' = Sales Development Rep, 'manager' = Sales Manager, 'admin' = Administrator.",
+        },
+        is_active: {
+          type: "boolean",
+          description:
+            "Filter by active status. true = active users only, false = inactive/deactivated users only. Omit to return all.",
+        },
         page: {
           type: "number",
           description: "Page number for pagination (default: 1).",
@@ -52,13 +62,22 @@ export const userTools = {
       },
     },
     handler: async (args: {
+      role?: string;
+      is_active?: boolean;
       page?: number;
       per_page?: number;
     }): Promise<ToolResult> => {
       try {
+        const params: Record<string, string | number | boolean | undefined> = {
+          page: args.page,
+          per_page: args.per_page,
+          role: args.role,
+          is_active: args.is_active,
+        };
+
         const result = await commishClient.get<PaginatedResponse<User>>(
           "/users",
-          { page: args.page, per_page: args.per_page }
+          params
         );
         return successResult(result);
       } catch (error) {
@@ -69,7 +88,7 @@ export const userTools = {
 
   get_user: {
     description:
-      "Get full details of a single user by ID. Returns name, email, role, assigned comp plan, status, and start date. Use when you need detailed information about a specific rep or user.",
+      "Get full details of a single user by ID. Returns name, email, role, title, start_date, is_active status, and manager_id. Use when you need detailed information about a specific rep or user.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -94,13 +113,22 @@ export const userTools = {
 
   get_user_commissions: {
     description:
-      "Get commission history for a specific user/rep. Returns all commission records including deal name, ARR, commission amount, rate, accelerator applied, status (calculated/paid/pending), and period. Use when a user asks 'how much has [rep] earned?', 'show me [rep]'s commissions', or wants a rep's earnings history.",
+      "Get commission history for a specific user/rep by filtering the commissions endpoint. Returns approved deal records showing opportunity name, close date, arr_commission, wnc_commission, and total_commission. Use when a user asks 'how much has [rep] earned?', 'show me [rep]'s commissions', or wants a rep's earnings history.",
     inputSchema: {
       type: "object" as const,
       properties: {
         id: {
           type: "string",
           description: "The unique user ID to get commissions for.",
+        },
+        comp_plan_id: {
+          type: "string",
+          description: "Optional: filter commissions for a specific comp plan.",
+        },
+        period: {
+          type: "string",
+          description:
+            "Optional: filter by month in YYYY-MM format (e.g., '2025-03' for March 2025). Returns deals closed in that month.",
         },
         page: {
           type: "number",
@@ -115,13 +143,21 @@ export const userTools = {
     },
     handler: async (args: {
       id: string;
+      comp_plan_id?: string;
+      period?: string;
       page?: number;
       per_page?: number;
     }): Promise<ToolResult> => {
       try {
         const result = await commishClient.get<PaginatedResponse<Commission>>(
-          `/users/${args.id}/commissions`,
-          { page: args.page, per_page: args.per_page }
+          "/commissions",
+          {
+            user_id: args.id,
+            comp_plan_id: args.comp_plan_id,
+            period: args.period,
+            page: args.page,
+            per_page: args.per_page,
+          }
         );
         return successResult(result);
       } catch (error) {
@@ -132,17 +168,14 @@ export const userTools = {
 
   create_user: {
     description:
-      "Create a new user/sales rep in Commish. Requires first name, last name, and email. Optionally assign a role and comp plan. Use when onboarding a new team member or adding a rep to the system.",
+      "Create a new user/sales rep in Commish. Requires name (full name as a single string) and email. Optionally set role, title, start_date, is_active, and manager_id. Note: the backend uses a single 'name' field, not separate first/last name fields. Use when onboarding a new team member or adding a rep to the system.",
     inputSchema: {
       type: "object" as const,
       properties: {
-        first_name: {
+        name: {
           type: "string",
-          description: "User's first name.",
-        },
-        last_name: {
-          type: "string",
-          description: "User's last name.",
+          description:
+            "User's full name as a single string (e.g., 'Jane Smith'). This is a single name field, not split into first/last.",
         },
         email: {
           type: "string",
@@ -151,39 +184,50 @@ export const userTools = {
         },
         role: {
           type: "string",
-          enum: ["ae", "sdr", "manager", "admin"],
           description:
-            "User role. 'ae' = Account Executive, 'sdr' = Sales Development Rep, 'manager' = Sales Manager (can view/approve), 'admin' = Administrator (full access).",
+            "User role. Common values: 'ae' = Account Executive, 'sdr' = Sales Development Rep, 'manager' = Sales Manager (can view/approve), 'admin' = Administrator (full access).",
         },
-        comp_plan_id: {
+        title: {
           type: "string",
           description:
-            "ID of the compensation plan to assign to this user immediately. Can be assigned later via assign_comp_plan.",
+            "User's job title (e.g., 'Senior Account Executive', 'SDR Manager'). Optional.",
         },
         start_date: {
           type: "string",
           description:
             "User's start date in ISO 8601 format (YYYY-MM-DD). Used for quota proration and eligibility calculations.",
         },
+        is_active: {
+          type: "boolean",
+          description:
+            "Whether the user is active. Defaults to true. Set to false to create a deactivated user.",
+        },
+        manager_id: {
+          type: "string",
+          description:
+            "ID of this user's manager (must be another user in the organization). Optional.",
+        },
       },
-      required: ["first_name", "last_name", "email"],
+      required: ["name", "email"],
     },
     handler: async (args: {
-      first_name: string;
-      last_name: string;
+      name: string;
       email: string;
-      role?: "ae" | "sdr" | "manager" | "admin";
-      comp_plan_id?: string;
+      role?: string;
+      title?: string;
       start_date?: string;
+      is_active?: boolean;
+      manager_id?: string;
     }): Promise<ToolResult> => {
       try {
         const body: CreateUserRequest = {
-          first_name: args.first_name,
-          last_name: args.last_name,
+          name: args.name,
           email: args.email,
           role: args.role,
-          comp_plan_id: args.comp_plan_id,
+          title: args.title,
           start_date: args.start_date,
+          is_active: args.is_active,
+          manager_id: args.manager_id,
         };
         const result = await commishClient.post<SingleResponse<User>>(
           "/users",
@@ -198,7 +242,7 @@ export const userTools = {
 
   update_user: {
     description:
-      "Update an existing user's information. Only provided fields will be changed. Use to update a rep's name, email, role, assigned comp plan, or status. Deactivate a user by setting status to 'inactive'.",
+      "Update an existing user's information. Only provided fields will be changed. Use to update a rep's name, email, role, title, start_date, manager, or active status. To deactivate a user who left the team, set is_active to false. Note: use assign_comp_plan (not this tool) to change a user's comp plan assignment.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -206,13 +250,9 @@ export const userTools = {
           type: "string",
           description: "The unique user ID to update.",
         },
-        first_name: {
+        name: {
           type: "string",
-          description: "Updated first name.",
-        },
-        last_name: {
-          type: "string",
-          description: "Updated last name.",
+          description: "Updated full name as a single string.",
         },
         email: {
           type: "string",
@@ -220,40 +260,47 @@ export const userTools = {
         },
         role: {
           type: "string",
-          enum: ["ae", "sdr", "manager", "admin"],
-          description: "Updated role.",
+          description: "Updated role (e.g., 'ae', 'sdr', 'manager', 'admin').",
         },
-        comp_plan_id: {
+        title: {
           type: "string",
-          description:
-            "Updated comp plan ID. Use assign_comp_plan for effective-dated changes.",
+          description: "Updated job title.",
         },
-        status: {
+        start_date: {
           type: "string",
-          enum: ["active", "inactive"],
+          description: "Updated start date in ISO 8601 format (YYYY-MM-DD).",
+        },
+        is_active: {
+          type: "boolean",
           description:
-            "Set to 'inactive' to deactivate a user who has left the team.",
+            "Set to false to deactivate a user who has left the team. Set to true to reactivate.",
+        },
+        manager_id: {
+          type: "string",
+          description: "Updated manager ID.",
         },
       },
       required: ["id"],
     },
     handler: async (args: {
       id: string;
-      first_name?: string;
-      last_name?: string;
+      name?: string;
       email?: string;
-      role?: "ae" | "sdr" | "manager" | "admin";
-      comp_plan_id?: string;
-      status?: "active" | "inactive";
+      role?: string;
+      title?: string;
+      start_date?: string;
+      is_active?: boolean;
+      manager_id?: string;
     }): Promise<ToolResult> => {
       try {
         const body: UpdateUserRequest = {
-          first_name: args.first_name,
-          last_name: args.last_name,
+          name: args.name,
           email: args.email,
           role: args.role,
-          comp_plan_id: args.comp_plan_id,
-          status: args.status,
+          title: args.title,
+          start_date: args.start_date,
+          is_active: args.is_active,
+          manager_id: args.manager_id,
         };
         const result = await commishClient.patch<SingleResponse<User>>(
           `/users/${args.id}`,

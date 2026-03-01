@@ -36,20 +36,30 @@ function errorResult(error: unknown): ToolResult {
 export const dealTools = {
   list_deals: {
     description:
-      "List and filter sales deals. Returns deal name, ARR amount, commission amount, status, assigned rep, and close date. Use this when the user asks about deals, pipeline, revenue, or wants to see what's been closed, pending, or approved. Supports filtering by status (pending/approved/rejected) and by rep ID. Supports pagination.",
+      "List and filter sales deals. Returns deal fields including opportunity_name, arr_amount, total_commission, arr_commission, wnc_commission, status (draft/pending/approved/rejected), user_id, comp_plan_id, customer_name, close_date, deal_type, and contract_term. Use when the user asks about deals, pipeline, revenue, or wants to see what's been closed, pending, or approved. Filter by status, user_id, or date range.",
     inputSchema: {
       type: "object" as const,
       properties: {
         status: {
           type: "string",
-          enum: ["pending", "approved", "rejected"],
+          enum: ["draft", "pending", "approved", "rejected"],
           description:
-            "Filter by deal status. Use 'pending' for deals awaiting approval, 'approved' for approved deals, 'rejected' for rejected deals.",
+            "Filter by deal status. 'draft' = entered but not submitted, 'pending' = submitted awaiting approval, 'approved' = approved and commission calculated, 'rejected' = not counting toward commissions.",
         },
-        rep_id: {
+        user_id: {
           type: "string",
           description:
-            "Filter deals by a specific sales rep's user ID. Use get_user or list_users to find rep IDs.",
+            "Filter deals by a specific sales rep's user ID. Use list_users to find user IDs.",
+        },
+        date_from: {
+          type: "string",
+          description:
+            "Filter deals with close_date on or after this date (ISO 8601 format: YYYY-MM-DD).",
+        },
+        date_to: {
+          type: "string",
+          description:
+            "Filter deals with close_date on or before this date (ISO 8601 format: YYYY-MM-DD).",
         },
         page: {
           type: "number",
@@ -63,7 +73,9 @@ export const dealTools = {
     },
     handler: async (args: {
       status?: string;
-      rep_id?: string;
+      user_id?: string;
+      date_from?: string;
+      date_to?: string;
       page?: number;
       per_page?: number;
     }): Promise<ToolResult> => {
@@ -72,7 +84,9 @@ export const dealTools = {
           "/deals",
           {
             status: args.status,
-            rep_id: args.rep_id,
+            user_id: args.user_id,
+            date_from: args.date_from,
+            date_to: args.date_to,
             page: args.page,
             per_page: args.per_page,
           }
@@ -86,7 +100,7 @@ export const dealTools = {
 
   get_deal: {
     description:
-      "Get full details of a single deal by ID, including ARR amount, commission amount, status, assigned rep, deal type, close date, and notes. Use this when a user wants to see details about a specific deal.",
+      "Get full details of a single deal by ID. Returns all deal fields including arr_amount, commission amounts, status, user_id, comp_plan, customer_name, close_date, deal_type, contract_term, notes, and any deal splits. Use when a user wants to see details about a specific deal.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -111,29 +125,38 @@ export const dealTools = {
 
   create_deal: {
     description:
-      "Create a new sales deal. Requires at minimum the opportunity name and ARR amount. The deal will be created in 'pending' status awaiting approval. Use when a user says they closed a deal, wants to log a new deal, or enter a new opportunity. Commission will be calculated automatically upon approval based on the rep's comp plan.",
+      "Create a new sales deal. Requires comp_plan_id, opportunity_name, and close_date. The rep (user_id) is automatically derived from the comp plan's assigned user. Deal starts in 'draft' status. Commission is calculated upon approval based on the comp plan's arr_variable_percentage and accelerators. Use when logging a newly closed deal or entering an opportunity.",
     inputSchema: {
       type: "object" as const,
       properties: {
+        comp_plan_id: {
+          type: "string",
+          description:
+            "ID of the compensation plan governing this deal. The rep's user_id is derived from this plan. Required.",
+        },
         opportunity_name: {
           type: "string",
           description:
-            "Name of the deal or opportunity (e.g., 'Acme Corp - Enterprise Plan').",
+            "Name of the deal or opportunity (e.g., 'Acme Corp - Enterprise Plan'). Required.",
         },
-        arr_amount: {
-          type: "number",
-          description:
-            "Annual Recurring Revenue amount in dollars (e.g., 50000 for $50,000 ARR).",
-        },
-        rep_id: {
+        customer_name: {
           type: "string",
-          description:
-            "ID of the sales rep to assign the deal to. If not provided, may default to the authenticated user.",
+          description: "Name of the customer/account. Optional.",
         },
         close_date: {
           type: "string",
           description:
-            "Deal close date in ISO 8601 format (YYYY-MM-DD). Defaults to today if not provided.",
+            "Deal close date in ISO 8601 format (YYYY-MM-DD). Required. Used for commission period calculations.",
+        },
+        contract_term: {
+          type: "number",
+          description:
+            "Contract term length in months (e.g., 12 for annual, 24 for 2-year). Default: 12.",
+        },
+        arr_amount: {
+          type: "number",
+          description:
+            "Annual Recurring Revenue amount in dollars (e.g., 50000 for $50,000 ARR). Default: 0.",
         },
         notes: {
           type: "string",
@@ -144,27 +167,52 @@ export const dealTools = {
           type: "string",
           enum: ["new_business", "renewal", "expansion"],
           description:
-            "Type of deal. 'new_business' = net-new customer, 'renewal' = existing contract renewing, 'expansion' = upsell/add-on to existing customer.",
+            "Type of deal. 'new_business' = net-new customer, 'renewal' = existing contract renewing, 'expansion' = upsell/add-on to existing customer. Default: 'new_business'.",
+        },
+        primary_metric_value: {
+          type: "number",
+          description:
+            "Primary metric value for this deal (usage varies by plan type). Default: 0.",
+        },
+        secondary_metric_value: {
+          type: "number",
+          description:
+            "Secondary metric value for this deal (usage varies by plan type). Default: 0.",
+        },
+        custom_fields: {
+          type: "object",
+          description:
+            "Optional JSON object for any additional custom data fields associated with this deal.",
         },
       },
-      required: ["opportunity_name", "arr_amount"],
+      required: ["comp_plan_id", "opportunity_name", "close_date"],
     },
     handler: async (args: {
+      comp_plan_id: string;
       opportunity_name: string;
-      arr_amount: number;
-      rep_id?: string;
-      close_date?: string;
+      customer_name?: string;
+      close_date: string;
+      contract_term?: number;
+      arr_amount?: number;
       notes?: string;
       deal_type?: "new_business" | "renewal" | "expansion";
+      primary_metric_value?: number;
+      secondary_metric_value?: number;
+      custom_fields?: Record<string, unknown>;
     }): Promise<ToolResult> => {
       try {
         const body: CreateDealRequest = {
+          comp_plan_id: args.comp_plan_id,
           opportunity_name: args.opportunity_name,
-          arr_amount: args.arr_amount,
-          rep_id: args.rep_id,
+          customer_name: args.customer_name,
           close_date: args.close_date,
+          contract_term: args.contract_term,
+          arr_amount: args.arr_amount,
           notes: args.notes,
           deal_type: args.deal_type,
+          primary_metric_value: args.primary_metric_value,
+          secondary_metric_value: args.secondary_metric_value,
+          custom_fields: args.custom_fields,
         };
         const result = await commishClient.post<SingleResponse<Deal>>(
           "/deals",
@@ -179,7 +227,7 @@ export const dealTools = {
 
   update_deal: {
     description:
-      "Update an existing deal's details such as ARR amount, assigned rep, close date, notes, or deal type. Use when a user wants to edit or correct deal information. Only provided fields will be updated.",
+      "Update an existing deal's details. Only the following fields can be updated: opportunity_name, customer_name, close_date, contract_term, arr_amount, notes, deal_type, primary_metric_value, secondary_metric_value, custom_fields. The comp plan assignment and user cannot be changed here. Only provided fields will be updated.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -191,17 +239,21 @@ export const dealTools = {
           type: "string",
           description: "Updated name of the opportunity.",
         },
+        customer_name: {
+          type: "string",
+          description: "Updated customer/account name.",
+        },
         arr_amount: {
           type: "number",
           description: "Updated ARR amount in dollars.",
         },
-        rep_id: {
-          type: "string",
-          description: "Updated sales rep ID to reassign the deal.",
-        },
         close_date: {
           type: "string",
           description: "Updated close date in ISO 8601 format (YYYY-MM-DD).",
+        },
+        contract_term: {
+          type: "number",
+          description: "Updated contract term in months.",
         },
         notes: {
           type: "string",
@@ -212,26 +264,46 @@ export const dealTools = {
           enum: ["new_business", "renewal", "expansion"],
           description: "Updated deal type.",
         },
+        primary_metric_value: {
+          type: "number",
+          description: "Updated primary metric value.",
+        },
+        secondary_metric_value: {
+          type: "number",
+          description: "Updated secondary metric value.",
+        },
+        custom_fields: {
+          type: "object",
+          description: "Updated custom fields JSON object.",
+        },
       },
       required: ["id"],
     },
     handler: async (args: {
       id: string;
       opportunity_name?: string;
+      customer_name?: string;
       arr_amount?: number;
-      rep_id?: string;
       close_date?: string;
+      contract_term?: number;
       notes?: string;
       deal_type?: "new_business" | "renewal" | "expansion";
+      primary_metric_value?: number;
+      secondary_metric_value?: number;
+      custom_fields?: Record<string, unknown>;
     }): Promise<ToolResult> => {
       try {
         const body: UpdateDealRequest = {
           opportunity_name: args.opportunity_name,
+          customer_name: args.customer_name,
           arr_amount: args.arr_amount,
-          rep_id: args.rep_id,
           close_date: args.close_date,
+          contract_term: args.contract_term,
           notes: args.notes,
           deal_type: args.deal_type,
+          primary_metric_value: args.primary_metric_value,
+          secondary_metric_value: args.secondary_metric_value,
+          custom_fields: args.custom_fields,
         };
         const result = await commishClient.patch<SingleResponse<Deal>>(
           `/deals/${args.id}`,
@@ -246,7 +318,7 @@ export const dealTools = {
 
   approve_deal: {
     description:
-      "Approve a pending deal. This triggers commission calculation for the assigned rep based on their comp plan. Only deals in 'pending' status can be approved. This is an admin-level action. After approval, the commission record is created and the rep can see their earnings.",
+      "Approve a deal in 'pending' or 'draft' status. Sets status to 'approved' and records the approval timestamp. This is an admin-level action. After approval, the deal's commission amounts (arr_commission, wnc_commission, total_commission) factor into the rep's attainment and accelerator calculations. Use when a manager approves a submitted deal.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -271,7 +343,7 @@ export const dealTools = {
 
   reject_deal: {
     description:
-      "Reject a pending deal. The deal status will be set to 'rejected' and no commission will be paid. Only deals in 'pending' status can be rejected. This is an admin-level action. Use when a deal should not count toward commissions (e.g., entered in error, did not close, or violates policy).",
+      "Reject a deal in 'pending' or 'draft' status. Sets status to 'rejected' and records the rejection reason. No commission will be paid for rejected deals. This is an admin-level action. Use when a deal should not count toward commissions (e.g., entered in error, did not close, or violates policy).",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -282,7 +354,7 @@ export const dealTools = {
         reason: {
           type: "string",
           description:
-            "Optional reason for rejection, which may be stored in deal notes.",
+            "Reason for rejection. Stored as rejection_reason on the deal record. Optional but recommended.",
         },
       },
       required: ["id"],
