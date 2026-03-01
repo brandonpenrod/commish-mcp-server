@@ -113,7 +113,7 @@ export const compPlanTools = {
 
   create_comp_plan: {
     description:
-      "Create a new compensation plan. Requires a name. All other fields are optional. Key fields: arr_variable_percentage (ARR commission rate as decimal, e.g. 0.10 = 10%), arr_quota_annual (annual ARR quota in dollars), arr_annual_accelerator (multiplier applied at 100% attainment, e.g. 2.0 = double rate), arr_quarterly_accelerator (multiplier at 75% attainment). Use when setting up a comp plan for a new rep or role.",
+      "IMPORTANT: Pass all numeric values exactly as provided by the user. Do NOT calculate, derive, or transform commission rates, quotas, or salary figures. If the user says '10% commission rate', pass 0.10 — do not divide target compensation by quota to derive your own rate. Create a new compensation plan. Requires a name. All other fields are optional. Key fields: arr_variable_percentage (ARR commission rate as decimal, e.g. 0.10 = 10%), arr_quota_annual (annual ARR quota in dollars), arr_annual_accelerator (multiplier applied at 100% attainment, e.g. 2.0 = double rate), arr_quarterly_accelerator (multiplier at 75% attainment). Use when setting up a comp plan for a new rep or role.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -140,32 +140,32 @@ export const compPlanTools = {
         base_salary: {
           type: "number",
           description:
-            "Annual base salary in dollars (e.g., 80000 for $80,000). Used for total compensation calculations.",
+            "Annual base salary in dollars (e.g., 80000 for $80,000). Pass the exact dollar amount. Example: user says '$90K' → pass 90000. Used for total compensation calculations.",
         },
         variable_compensation: {
           type: "number",
           description:
-            "Target variable compensation in dollars at 100% quota attainment (e.g., 80000 for $80K OTE variable).",
+            "Target variable compensation in dollars at 100% quota attainment. Pass the exact dollar amount the user states as variable/bonus target. Example: user says '$80K variable' → pass 80000.",
         },
         arr_variable_percentage: {
           type: "number",
           description:
-            "ARR commission rate as a decimal (e.g., 0.10 = 10%). Applied to ARR amount of qualifying deals. This is the base rate before accelerators.",
+            "ARR commission rate as a decimal (e.g., 0.10 = 10%). Pass the user's stated rate directly. Example: user says '10%' → pass 0.10. Do NOT calculate this from other fields. Applied to ARR amount of qualifying deals. This is the base rate before accelerators.",
         },
         wnc_variable_percentage: {
           type: "number",
           description:
-            "Secondary metric commission rate as a decimal (e.g., 0.08 = 8%). Used for the second compensation metric (hardware revenue, services, etc.).",
+            "Secondary metric commission rate as a decimal (e.g., 0.08 = 8%). Pass the user's stated rate directly. Example: user says '8%' → pass 0.08. Do NOT calculate this from other fields.",
         },
         arr_quota_annual: {
           type: "number",
           description:
-            "Annual ARR quota in dollars (e.g., 1000000 for $1M quota). Used to calculate attainment percentage and trigger accelerators.",
+            "Annual ARR quota in dollars. Pass the exact quota amount. Example: user says '$400K quota' → pass 400000. Used to calculate attainment percentage and trigger accelerators.",
         },
         wnc_quota_annual: {
           type: "number",
           description:
-            "Annual secondary metric quota in dollars or units. Used to calculate secondary attainment percentage.",
+            "Annual secondary metric quota in dollars or units. Pass the exact quota amount the user states.",
         },
         arr_quarterly_accelerator: {
           type: "number",
@@ -249,7 +249,7 @@ export const compPlanTools = {
 
   update_comp_plan: {
     description:
-      "Update an existing compensation plan. Only provided fields will be updated — all other fields remain unchanged. Use when adjusting commission rates, quota amounts, accelerator multipliers, assigned user, fiscal year, or plan status. For example: increase arr_variable_percentage, update arr_quota_annual, or set status to 'active'.",
+      "IMPORTANT: Pass all numeric values exactly as provided by the user. Do NOT calculate, derive, or transform commission rates, quotas, or salary figures. If the user says '10% commission rate', pass 0.10 — do not divide target compensation by quota to derive your own rate. Update an existing compensation plan. Only provided fields will be updated — all other fields remain unchanged. Use when adjusting commission rates, quota amounts, accelerator multipliers, assigned user, fiscal year, or plan status. For example: increase arr_variable_percentage, update arr_quota_annual, or set status to 'active'.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -275,28 +275,28 @@ export const compPlanTools = {
         },
         base_salary: {
           type: "number",
-          description: "Updated annual base salary in dollars.",
+          description: "Updated annual base salary in dollars. Pass the exact dollar amount. Example: user says '$90K' → pass 90000.",
         },
         variable_compensation: {
           type: "number",
-          description: "Updated variable compensation target in dollars.",
+          description: "Updated variable compensation target in dollars. Pass the exact dollar amount the user states as variable/bonus target.",
         },
         arr_variable_percentage: {
           type: "number",
           description:
-            "Updated ARR commission rate as a decimal (e.g., 0.10 = 10%).",
+            "Updated ARR commission rate as a decimal (e.g., 0.10 = 10%). Pass the user's stated rate directly. Example: user says '10%' → pass 0.10. Do NOT calculate this from other fields.",
         },
         wnc_variable_percentage: {
           type: "number",
-          description: "Updated secondary metric commission rate as a decimal.",
+          description: "Updated secondary metric commission rate as a decimal. Pass the user's stated rate directly. Example: user says '8%' → pass 0.08. Do NOT calculate this from other fields.",
         },
         arr_quota_annual: {
           type: "number",
-          description: "Updated annual ARR quota in dollars.",
+          description: "Updated annual ARR quota in dollars. Pass the exact quota amount. Example: user says '$400K quota' → pass 400000.",
         },
         wnc_quota_annual: {
           type: "number",
-          description: "Updated annual secondary metric quota.",
+          description: "Updated annual secondary metric quota. Pass the exact quota amount the user states.",
         },
         arr_quarterly_accelerator: {
           type: "number",
@@ -438,6 +438,162 @@ export const compPlanTools = {
       } catch (error) {
         return errorResult(error);
       }
+    },
+  },
+
+  preview_comp_plan: {
+    description:
+      "Preview a compensation plan BEFORE creating it. ALWAYS call this before create_comp_plan to show the user exactly what will be created and get their confirmation. Returns a formatted summary of all plan values. Only proceed with create_comp_plan after the user confirms the preview looks correct.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: {
+          type: "string",
+          description:
+            "Name of the compensation plan (e.g., 'AE Standard Plan FY2025', 'Enterprise AE Plan').",
+        },
+        plan_type: {
+          type: "string",
+          description:
+            "Plan type identifier (e.g., 'ae', 'sdr', 'manager'). Default: 'ae'. Free-form string for categorization.",
+        },
+        user_id: {
+          type: "string",
+          description:
+            "ID of the user (rep) this plan is assigned to. Can be left unset and assigned later via assign_comp_plan.",
+        },
+        fiscal_year_id: {
+          type: "string",
+          description:
+            "ID of the fiscal year this plan belongs to. Optional — used to group plans by fiscal period.",
+        },
+        base_salary: {
+          type: "number",
+          description:
+            "Annual base salary in dollars (e.g., 80000 for $80,000). Pass the exact dollar amount. Example: user says '$90K' → pass 90000. Used for total compensation calculations.",
+        },
+        variable_compensation: {
+          type: "number",
+          description:
+            "Target variable compensation in dollars at 100% quota attainment. Pass the exact dollar amount the user states as variable/bonus target. Example: user says '$80K variable' → pass 80000.",
+        },
+        arr_variable_percentage: {
+          type: "number",
+          description:
+            "ARR commission rate as a decimal (e.g., 0.10 = 10%). Pass the user's stated rate directly. Example: user says '10%' → pass 0.10. Do NOT calculate this from other fields. Applied to ARR amount of qualifying deals. This is the base rate before accelerators.",
+        },
+        wnc_variable_percentage: {
+          type: "number",
+          description:
+            "Secondary metric commission rate as a decimal (e.g., 0.08 = 8%). Pass the user's stated rate directly. Example: user says '8%' → pass 0.08. Do NOT calculate this from other fields.",
+        },
+        arr_quota_annual: {
+          type: "number",
+          description:
+            "Annual ARR quota in dollars. Pass the exact quota amount. Example: user says '$400K quota' → pass 400000. Used to calculate attainment percentage and trigger accelerators.",
+        },
+        wnc_quota_annual: {
+          type: "number",
+          description:
+            "Annual secondary metric quota in dollars or units. Pass the exact quota amount the user states.",
+        },
+        arr_quarterly_accelerator: {
+          type: "number",
+          description:
+            "ARR accelerator multiplier applied when quarterly attainment milestone is hit (e.g., 1.5 = 1.5× the base ARR rate). Typical range: 1.0–3.0.",
+        },
+        arr_annual_accelerator: {
+          type: "number",
+          description:
+            "ARR accelerator multiplier applied when 100% annual quota is reached (e.g., 2.0 = double the base ARR rate). Typical range: 1.0–3.0.",
+        },
+        wnc_annual_accelerator: {
+          type: "number",
+          description:
+            "Secondary metric accelerator multiplier applied when 100% annual secondary quota is reached (e.g., 2.0 = double the base rate).",
+        },
+        ramp_months: {
+          type: "number",
+          description:
+            "Number of months for quota ramp-up period (e.g., 3 = 3-month ramp). During ramp, quota is prorated. Default: 0 (no ramp).",
+        },
+        effective_start_date: {
+          type: "string",
+          description:
+            "Plan effective start date in ISO 8601 format (YYYY-MM-DD). When the plan takes effect.",
+        },
+        status: {
+          type: "string",
+          enum: ["draft", "active", "archived"],
+          description:
+            "Initial plan status. 'draft' = not yet live (default), 'active' = currently in use, 'archived' = retired.",
+        },
+      },
+      required: [],
+    },
+    handler: async (args: {
+      name?: string;
+      plan_type?: string;
+      user_id?: string;
+      fiscal_year_id?: string;
+      base_salary?: number;
+      variable_compensation?: number;
+      arr_variable_percentage?: number;
+      wnc_variable_percentage?: number;
+      arr_quota_annual?: number;
+      wnc_quota_annual?: number;
+      arr_quarterly_accelerator?: number;
+      arr_annual_accelerator?: number;
+      wnc_annual_accelerator?: number;
+      ramp_months?: number;
+      effective_start_date?: string;
+      status?: "draft" | "active" | "archived";
+    }): Promise<ToolResult> => {
+      const lines = [
+        "═══ COMP PLAN PREVIEW ═══",
+        "",
+        `Plan Name: ${args.name || "(unnamed)"}`,
+        `Plan Type: ${args.plan_type || "individual"}`,
+        `Status: ${args.status || "draft"}`,
+        "",
+        "── Compensation ──",
+        `Base Salary: $${(args.base_salary || 0).toLocaleString()}`,
+        `Variable Compensation: $${(args.variable_compensation || 0).toLocaleString()}`,
+        `OTE: $${((args.base_salary || 0) + (args.variable_compensation || 0)).toLocaleString()}`,
+        "",
+        "── Primary Metric (ARR) ──",
+        `Commission Rate: ${((args.arr_variable_percentage || 0) * 100).toFixed(1)}%`,
+        `Annual Quota: $${(args.arr_quota_annual || 0).toLocaleString()}`,
+        `Quarterly Accelerator: ${args.arr_quarterly_accelerator || 1.0}x`,
+        `Annual Accelerator: ${args.arr_annual_accelerator || 1.0}x`,
+        "",
+      ];
+
+      if ((args.wnc_variable_percentage || 0) > 0 || (args.wnc_quota_annual || 0) > 0) {
+        lines.push(
+          "── Secondary Metric ──",
+          `Commission Rate: ${((args.wnc_variable_percentage || 0) * 100).toFixed(1)}%`,
+          `Annual Quota: $${(args.wnc_quota_annual || 0).toLocaleString()}`,
+          `Annual Accelerator: ${args.wnc_annual_accelerator || 1.0}x`,
+          ""
+        );
+      }
+
+      if (args.ramp_months) {
+        lines.push(`Ramp Period: ${args.ramp_months} months`);
+      }
+      if (args.effective_start_date) {
+        lines.push(`Effective Start: ${args.effective_start_date}`);
+      }
+      if (args.user_id) {
+        lines.push(`Assigned To: ${args.user_id}`);
+      }
+
+      lines.push("", "⚠️ Please confirm these values are correct before proceeding with create_comp_plan.");
+
+      return {
+        content: [{ type: "text", text: lines.join("\n") }],
+      };
     },
   },
 };
