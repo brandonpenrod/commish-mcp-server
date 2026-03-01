@@ -182,6 +182,16 @@ export const compPlanTools = {
           description:
             "WNC accelerator multiplier applied when 100% annual WNC quota is reached (e.g., 2.0 = double the base WNC rate).",
         },
+        ramp_months: {
+          type: "number",
+          description:
+            "Number of months for quota ramp-up period (e.g., 3 = 3-month ramp). During ramp, quota is prorated. Default: 0 (no ramp).",
+        },
+        effective_start_date: {
+          type: "string",
+          description:
+            "Plan effective start date in ISO 8601 format (YYYY-MM-DD). When the plan takes effect.",
+        },
         status: {
           type: "string",
           enum: ["draft", "active", "archived"],
@@ -204,13 +214,15 @@ export const compPlanTools = {
       arr_quarterly_accelerator?: number;
       arr_annual_accelerator?: number;
       wnc_annual_accelerator?: number;
+      ramp_months?: number;
+      effective_start_date?: string;
       status?: "draft" | "active" | "archived";
     }): Promise<ToolResult> => {
       try {
         const body: CreateCompPlanRequest = {
           plan_type: args.plan_type,
-          user_id: args.user_id,
           fiscal_year_id: args.fiscal_year_id,
+          user_id: args.user_id,
           base_salary: args.base_salary,
           variable_compensation: args.variable_compensation,
           arr_variable_percentage: args.arr_variable_percentage,
@@ -220,6 +232,8 @@ export const compPlanTools = {
           arr_quarterly_accelerator: args.arr_quarterly_accelerator,
           arr_annual_accelerator: args.arr_annual_accelerator,
           wnc_annual_accelerator: args.wnc_annual_accelerator,
+          ramp_months: args.ramp_months,
+          effective_start_date: args.effective_start_date,
           status: args.status,
         };
         const result = await commishClient.post<SingleResponse<CompPlan>>(

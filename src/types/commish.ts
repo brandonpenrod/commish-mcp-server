@@ -87,8 +87,8 @@ export interface CompPlan {
 }
 export interface CreateCompPlanRequest {
   plan_type?: string;
-  user_id?: string;
   fiscal_year_id?: string;
+  user_id?: string;
   base_salary?: number;
   variable_compensation?: number;
   arr_variable_percentage?: number;
@@ -98,6 +98,8 @@ export interface CreateCompPlanRequest {
   arr_quarterly_accelerator?: number;
   arr_annual_accelerator?: number;
   wnc_annual_accelerator?: number;
+  ramp_months?: number;
+  effective_start_date?: string;
   status?: "draft" | "active" | "archived";
 }
 export interface UpdateCompPlanRequest {
