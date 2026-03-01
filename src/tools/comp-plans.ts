@@ -38,7 +38,7 @@ function errorResult(error: unknown): ToolResult {
 export const compPlanTools = {
   list_comp_plans: {
     description:
-      "List all compensation plans. Returns plan name, type, ARR/WNC commission rates, quota amounts, accelerator multipliers, assigned user, and status (draft/active/archived). Use when a user asks about comp plans, what commission structures exist, or wants to see all available plans. Filter by status or user_id to narrow results.",
+      "List all compensation plans. Returns plan name, type, primary/secondary metric commission rates, quota amounts, accelerator multipliers, assigned user, and status (draft/active/archived). Use when a user asks about comp plans, what commission structures exist, or wants to see all available plans. Filter by status or user_id to narrow results.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -88,7 +88,7 @@ export const compPlanTools = {
 
   get_comp_plan: {
     description:
-      "Get complete details of a single compensation plan by ID. Returns all configuration: plan type, base salary, variable compensation target, ARR commission rate (arr_variable_percentage), WNC commission rate (wnc_variable_percentage), annual ARR quota (arr_quota_annual), accelerator multipliers, assigned user, and status. Use when a user wants to see the full details of a specific plan.",
+      "Get complete details of a single compensation plan by ID. Returns all configuration: plan type, base salary, variable compensation target, ARR commission rate (arr_variable_percentage), annual ARR quota (arr_quota_annual), accelerator multipliers, assigned user, and status. Use when a user wants to see the full details of a specific plan.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -113,7 +113,7 @@ export const compPlanTools = {
 
   create_comp_plan: {
     description:
-      "Create a new compensation plan. Requires a name. All other fields are optional. Key fields: arr_variable_percentage (ARR commission rate as decimal, e.g. 0.10 = 10%), arr_quota_annual (annual ARR quota in dollars), arr_annual_accelerator (multiplier applied at 100% attainment, e.g. 2.0 = double rate), arr_quarterly_accelerator (multiplier at 75% attainment). WNC equivalents also available. Use when setting up a comp plan for a new rep or role.",
+      "Create a new compensation plan. Requires a name. All other fields are optional. Key fields: arr_variable_percentage (ARR commission rate as decimal, e.g. 0.10 = 10%), arr_quota_annual (annual ARR quota in dollars), arr_annual_accelerator (multiplier applied at 100% attainment, e.g. 2.0 = double rate), arr_quarterly_accelerator (multiplier at 75% attainment). Use when setting up a comp plan for a new rep or role.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -155,7 +155,7 @@ export const compPlanTools = {
         wnc_variable_percentage: {
           type: "number",
           description:
-            "WNC (Wins & Contracts) commission rate as a decimal. Applied to WNC points on qualifying deals.",
+            "Secondary metric commission rate as a decimal (e.g., 0.08 = 8%). Used for the second compensation metric (hardware revenue, services, etc.).",
         },
         arr_quota_annual: {
           type: "number",
@@ -165,7 +165,7 @@ export const compPlanTools = {
         wnc_quota_annual: {
           type: "number",
           description:
-            "Annual WNC quota (units or points). Used to calculate WNC attainment percentage.",
+            "Annual secondary metric quota in dollars or units. Used to calculate secondary attainment percentage.",
         },
         arr_quarterly_accelerator: {
           type: "number",
@@ -180,7 +180,7 @@ export const compPlanTools = {
         wnc_annual_accelerator: {
           type: "number",
           description:
-            "WNC accelerator multiplier applied when 100% annual WNC quota is reached (e.g., 2.0 = double the base WNC rate).",
+            "Secondary metric accelerator multiplier applied when 100% annual secondary quota is reached (e.g., 2.0 = double the base rate).",
         },
         ramp_months: {
           type: "number",
@@ -288,7 +288,7 @@ export const compPlanTools = {
         },
         wnc_variable_percentage: {
           type: "number",
-          description: "Updated WNC commission rate as a decimal.",
+          description: "Updated secondary metric commission rate as a decimal.",
         },
         arr_quota_annual: {
           type: "number",
@@ -296,7 +296,7 @@ export const compPlanTools = {
         },
         wnc_quota_annual: {
           type: "number",
-          description: "Updated annual WNC quota.",
+          description: "Updated annual secondary metric quota.",
         },
         arr_quarterly_accelerator: {
           type: "number",
@@ -308,7 +308,7 @@ export const compPlanTools = {
         },
         wnc_annual_accelerator: {
           type: "number",
-          description: "Updated WNC annual accelerator multiplier.",
+          description: "Updated secondary metric annual accelerator multiplier.",
         },
         status: {
           type: "string",
