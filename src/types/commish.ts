@@ -92,6 +92,7 @@ export interface CreateCompPlanRequest {
   user_id?: string;
   base_salary?: number;
   variable_compensation?: number;
+  // Legacy field names (still used by API internally)
   arr_variable_percentage?: number;
   wnc_variable_percentage?: number;
   arr_quota_annual?: number;
@@ -99,6 +100,16 @@ export interface CreateCompPlanRequest {
   arr_quarterly_accelerator?: number;
   arr_annual_accelerator?: number;
   wnc_annual_accelerator?: number;
+  // Generic metric fields
+  primary_metric?: string;
+  secondary_metric?: string;
+  primary_quota_annual?: number;
+  secondary_quota_annual?: number;
+  primary_variable_percentage?: number;
+  secondary_variable_percentage?: number;
+  primary_quarterly_accelerator?: number;
+  primary_annual_accelerator?: number;
+  secondary_annual_accelerator?: number;
   ramp_months?: number;
   effective_start_date?: string;
   status?: "draft" | "active" | "archived";

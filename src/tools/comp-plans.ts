@@ -15,7 +15,13 @@ type ToolResult = {
 };
 
 // Metrics measured in units (not currency) — rate should display as $/unit, not %
-const COUNT_METRICS = ['meetings', 'sqls', 'opportunities', 'units', 'wnc'];
+// This list is used for auto-detection; orgs can also explicitly set metric_type
+const COUNT_METRICS = [
+  'meetings', 'sqls', 'opportunities', 'units', 'wnc',
+  'deals', 'demos', 'calls', 'activities', 'points',
+  'customers', 'accounts', 'logos', 'installs', 'deployments',
+  'units_sold', 'machines', 'seats', 'licenses',
+];
 
 /**
  * Compute human-readable commission rate display.
@@ -183,90 +189,100 @@ export const compPlanTools = {
 
   create_comp_plan: {
     description:
-      "Create a new compensation plan. CRITICAL: arr_variable_percentage and wnc_variable_percentage are NOT commission rates — they are WEIGHTS (what portion of variable comp comes from each metric). Example: if variable is $60K and 60% comes from ARR, set arr_variable_percentage=0.60 and wnc_variable_percentage=0.40. The system calculates the actual commission rate automatically (e.g., $36K target / $400K quota = 9% rate). NEVER pass a commission rate here — always pass the weight/split. Pass all numeric values exactly as the user provides them.",
+      `Create a new compensation plan. Supports any combination of metrics.
+
+PRIMARY METRIC: The main revenue metric (usually ARR, revenue, bookings, etc.) — always measured in dollars.
+SECONDARY METRIC: An optional second metric that can be either currency-based (e.g., services revenue) or count/unit-based (e.g., meetings booked, WNC points, deals closed, units sold).
+
+CRITICAL RULES:
+- primary_variable_weight and secondary_variable_weight are WEIGHTS (fractions that sum to 1.0), NOT commission rates.
+  Example: 60% of variable from ARR → primary_variable_weight=0.60, secondary_variable_weight=0.40
+- The system calculates actual commission rates automatically (variable × weight / quota).
+- Set secondary_metric_type to "count" for non-dollar metrics (meetings, points, units) or "currency" for dollar metrics.
+- If only one metric, set primary_variable_weight=1.0 and omit secondary fields.`,
     inputSchema: {
       type: "object" as const,
       properties: {
         name: {
           type: "string",
-          description:
-            "Name of the compensation plan (e.g., 'AE Standard Plan FY2025', 'Enterprise AE Plan').",
+          description: "Name of the compensation plan (e.g., 'AE Standard Plan FY2025').",
         },
         plan_type: {
           type: "string",
-          description:
-            "Plan type identifier (e.g., 'ae', 'sdr', 'manager'). Default: 'ae'. Free-form string for categorization.",
+          description: "Plan type identifier (e.g., 'ae', 'sdr', 'manager', 'individual'). Default: 'individual'.",
         },
         user_id: {
           type: "string",
-          description:
-            "ID of the user (rep) this plan is assigned to. Can be left unset and assigned later via assign_comp_plan.",
+          description: "ID of the user (rep) this plan is assigned to. Can be left unset for unassigned draft plans.",
         },
         fiscal_year_id: {
           type: "string",
-          description:
-            "ID of the fiscal year this plan belongs to. Optional — used to group plans by fiscal period.",
+          description: "ID of the fiscal year. Optional — if omitted, uses the org's active fiscal year.",
         },
         base_salary: {
           type: "number",
-          description:
-            "Annual base salary in dollars (e.g., 80000 for $80,000). Pass the exact dollar amount. Example: user says '$90K' → pass 90000. Used for total compensation calculations.",
+          description: "Annual base salary in dollars (e.g., 80000 for $80K).",
         },
         variable_compensation: {
           type: "number",
-          description:
-            "Target variable compensation in dollars at 100% quota attainment. Pass the exact dollar amount the user states as variable/bonus target. Example: user says '$80K variable' → pass 80000.",
+          description: "Target variable compensation in dollars at 100% quota attainment (e.g., 50000 for $50K).",
         },
-        arr_variable_percentage: {
+        // --- Primary metric (usually ARR/revenue — always in dollars) ---
+        primary_metric: {
+          type: "string",
+          description: "Name of the primary metric (e.g., 'arr', 'revenue', 'bookings'). Default: 'arr'. Always currency-based.",
+        },
+        primary_variable_weight: {
           type: "number",
-          description:
-            "ARR WEIGHT — what fraction of variable compensation is tied to ARR. This is NOT a commission rate. Example: if 60% of variable comp comes from ARR, pass 0.60. If 100% from ARR (single metric), pass 1.0. The actual commission rate is calculated by the system (variable × weight / quota).",
+          description: "Fraction of variable comp tied to primary metric. NOT a rate. Example: 0.60 = 60% of variable from this metric. primary_variable_weight + secondary_variable_weight should = 1.0.",
         },
-        wnc_variable_percentage: {
+        primary_quota_annual: {
           type: "number",
-          description:
-            "Secondary metric WEIGHT — what fraction of variable compensation is tied to the secondary metric. NOT a commission rate. Example: if 40% from secondary, pass 0.40. arr_variable_percentage + wnc_variable_percentage should equal 1.0.",
+          description: "Annual quota for primary metric in dollars (e.g., 400000 for $400K).",
         },
-        arr_quota_annual: {
+        primary_quarterly_accelerator: {
           type: "number",
-          description:
-            "Annual ARR quota in dollars. Pass the exact quota amount. Example: user says '$400K quota' → pass 400000. Used to calculate attainment percentage and trigger accelerators.",
+          description: "Multiplier for quarterly accelerator on primary metric (e.g., 1.5 = 1.5×). Default: 1.0.",
         },
-        wnc_quota_annual: {
+        primary_annual_accelerator: {
           type: "number",
-          description:
-            "Annual secondary metric quota in dollars or units. Pass the exact quota amount the user states.",
+          description: "Multiplier for annual accelerator on primary metric (e.g., 2.0 = 2×). Default: 1.0.",
         },
-        arr_quarterly_accelerator: {
+        // --- Secondary metric (optional — can be currency or count-based) ---
+        secondary_metric: {
+          type: "string",
+          description: "Name of the secondary metric (e.g., 'wnc', 'meetings', 'sqls', 'units_sold', 'services_revenue'). Omit if single-metric plan.",
+        },
+        secondary_metric_type: {
+          type: "string",
+          enum: ["currency", "count"],
+          description: "Whether the secondary metric is measured in dollars ('currency') or units/points ('count'). Use 'count' for things like meetings, points, deals closed, units. Use 'currency' for dollar-based metrics like services revenue. Default: auto-detected from metric name.",
+        },
+        secondary_variable_weight: {
           type: "number",
-          description:
-            "ARR accelerator multiplier applied when quarterly attainment milestone is hit (e.g., 1.5 = 1.5× the base ARR rate). Typical range: 1.0–3.0.",
+          description: "Fraction of variable comp tied to secondary metric. Example: 0.40 = 40% of variable from this metric.",
         },
-        arr_annual_accelerator: {
+        secondary_quota_annual: {
           type: "number",
-          description:
-            "ARR accelerator multiplier applied when 100% annual quota is reached (e.g., 2.0 = double the base ARR rate). Typical range: 1.0–3.0.",
+          description: "Annual quota for secondary metric. In dollars if currency-based, in units if count-based (e.g., 30 for 30 WNC points, or 200000 for $200K services revenue).",
         },
-        wnc_annual_accelerator: {
+        secondary_annual_accelerator: {
           type: "number",
-          description:
-            "Secondary metric accelerator multiplier applied when 100% annual secondary quota is reached (e.g., 2.0 = double the base rate).",
+          description: "Multiplier for annual accelerator on secondary metric (e.g., 1.5 = 1.5×). Default: 1.0.",
         },
+        // --- Other settings ---
         ramp_months: {
           type: "number",
-          description:
-            "Number of months for quota ramp-up period (e.g., 3 = 3-month ramp). During ramp, quota is prorated. Default: 0 (no ramp).",
+          description: "Number of months for quota ramp-up period (e.g., 3). During ramp, quota is prorated. Default: 0.",
         },
         effective_start_date: {
           type: "string",
-          description:
-            "Plan effective start date in ISO 8601 format (YYYY-MM-DD). When the plan takes effect.",
+          description: "Plan effective start date in ISO 8601 format (YYYY-MM-DD).",
         },
         status: {
           type: "string",
           enum: ["draft", "active", "archived"],
-          description:
-            "Initial plan status. 'draft' = not yet live (default), 'active' = currently in use, 'archived' = retired.",
+          description: "Initial plan status. Default: 'draft'.",
         },
       },
       required: [],
@@ -278,18 +294,26 @@ export const compPlanTools = {
       fiscal_year_id?: string;
       base_salary?: number;
       variable_compensation?: number;
-      arr_variable_percentage?: number;
-      wnc_variable_percentage?: number;
-      arr_quota_annual?: number;
-      wnc_quota_annual?: number;
-      arr_quarterly_accelerator?: number;
-      arr_annual_accelerator?: number;
-      wnc_annual_accelerator?: number;
+      primary_metric?: string;
+      primary_variable_weight?: number;
+      primary_quota_annual?: number;
+      primary_quarterly_accelerator?: number;
+      primary_annual_accelerator?: number;
+      secondary_metric?: string;
+      secondary_metric_type?: "currency" | "count";
+      secondary_variable_weight?: number;
+      secondary_quota_annual?: number;
+      secondary_annual_accelerator?: number;
       ramp_months?: number;
       effective_start_date?: string;
       status?: "draft" | "active" | "archived";
     }): Promise<ToolResult> => {
       try {
+        // Auto-detect secondary metric type if not specified
+        const secondaryMetricType = args.secondary_metric_type
+          || (args.secondary_metric && COUNT_METRICS.includes(args.secondary_metric) ? 'count' : 'currency');
+
+        // Map generic fields to API fields (which still use legacy wnc_* naming internally)
         const body: CreateCompPlanRequest = {
           name: args.name,
           plan_type: args.plan_type,
@@ -297,13 +321,25 @@ export const compPlanTools = {
           user_id: args.user_id,
           base_salary: args.base_salary,
           variable_compensation: args.variable_compensation,
-          arr_variable_percentage: args.arr_variable_percentage,
-          wnc_variable_percentage: args.wnc_variable_percentage,
-          arr_quota_annual: args.arr_quota_annual,
-          wnc_quota_annual: args.wnc_quota_annual,
-          arr_quarterly_accelerator: args.arr_quarterly_accelerator,
-          arr_annual_accelerator: args.arr_annual_accelerator,
-          wnc_annual_accelerator: args.wnc_annual_accelerator,
+          // Primary metric → maps to arr_* fields
+          arr_variable_percentage: args.primary_variable_weight,
+          arr_quota_annual: args.primary_quota_annual,
+          arr_quarterly_accelerator: args.primary_quarterly_accelerator,
+          arr_annual_accelerator: args.primary_annual_accelerator,
+          // Secondary metric → maps to wnc_* fields (legacy naming)
+          wnc_variable_percentage: args.secondary_variable_weight,
+          wnc_quota_annual: args.secondary_quota_annual,
+          wnc_annual_accelerator: args.secondary_annual_accelerator,
+          // Generic columns
+          primary_metric: args.primary_metric || 'arr',
+          secondary_metric: args.secondary_metric || undefined,
+          primary_quota_annual: args.primary_quota_annual,
+          secondary_quota_annual: args.secondary_quota_annual,
+          primary_variable_percentage: args.primary_variable_weight,
+          secondary_variable_percentage: args.secondary_variable_weight,
+          primary_quarterly_accelerator: args.primary_quarterly_accelerator,
+          primary_annual_accelerator: args.primary_annual_accelerator,
+          secondary_annual_accelerator: args.secondary_annual_accelerator,
           ramp_months: args.ramp_months,
           effective_start_date: args.effective_start_date,
           status: args.status,
@@ -314,7 +350,9 @@ export const compPlanTools = {
         );
         // Enrich with computed rate display
         if (result.data) {
-          return successResult({ ...result, _computed: computeRateDisplay(result.data) });
+          const computed = computeRateDisplay(result.data);
+          computed.secondary_metric_type = secondaryMetricType;
+          return successResult({ ...result, _computed: computed });
         }
         return successResult(result);
       } catch (error) {
