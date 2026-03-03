@@ -14,6 +14,62 @@ type ToolResult = {
   isError?: boolean;
 };
 
+// Metrics measured in units (not currency) — rate should display as $/unit, not %
+const COUNT_METRICS = ['meetings', 'sqls', 'opportunities', 'units', 'wnc'];
+
+/**
+ * Compute human-readable commission rate display.
+ * For currency metrics (ARR, revenue): show as percentage (e.g., "10%")
+ * For count/unit metrics (WNC, meetings): show as $/unit (e.g., "$1,000 per WNC point")
+ */
+function computeRateDisplay(plan: CompPlan): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  const vc = plan.variable_compensation || 0;
+
+  // Primary metric
+  const primaryMetric = (plan as unknown as Record<string, unknown>).primary_metric as string || 'arr';
+  const primaryIsCurrency = !COUNT_METRICS.includes(primaryMetric);
+  const arrPct = plan.arr_variable_percentage || 0;
+  const arrQuota = plan.arr_quota_annual || 0;
+  const primaryTarget = vc * arrPct;
+  const primaryRate = arrQuota > 0 ? primaryTarget / arrQuota : 0;
+
+  result.primary_metric = primaryMetric.toUpperCase();
+  result.primary_variable_target = `$${primaryTarget.toLocaleString()}`;
+  if (primaryIsCurrency) {
+    result.primary_commission_rate = `${(primaryRate * 100).toFixed(2)}%`;
+    result.primary_rate_description = `${(primaryRate * 100).toFixed(2)}% of ${primaryMetric.toUpperCase()} revenue`;
+  } else {
+    result.primary_commission_rate = `$${primaryRate.toLocaleString(undefined, { maximumFractionDigits: 2 })} per ${primaryMetric.toUpperCase()} point`;
+    result.primary_rate_description = `$${primaryRate.toLocaleString(undefined, { maximumFractionDigits: 2 })} per ${primaryMetric.toUpperCase()} point`;
+  }
+
+  // Secondary metric
+  const secondaryMetric = ((plan as unknown as Record<string, unknown>).secondary_metric as string) || '';
+  const wncPct = plan.wnc_variable_percentage || ((plan as unknown as Record<string, unknown>).secondary_variable_percentage as number) || 0;
+  const wncQuota = plan.wnc_quota_annual || ((plan as unknown as Record<string, unknown>).secondary_quota_annual as number) || 0;
+
+  if (wncPct > 0 && wncQuota > 0) {
+    const secondaryIsCurrency = !COUNT_METRICS.includes(secondaryMetric || 'wnc');
+    const secondaryTarget = vc * wncPct;
+    const secondaryRate = secondaryTarget / wncQuota;
+
+    result.secondary_metric = (secondaryMetric || 'WNC').toUpperCase();
+    result.secondary_variable_target = `$${secondaryTarget.toLocaleString()}`;
+    if (secondaryIsCurrency) {
+      result.secondary_commission_rate = `${(secondaryRate * 100).toFixed(2)}%`;
+      result.secondary_rate_description = `${(secondaryRate * 100).toFixed(2)}% of ${(secondaryMetric || 'secondary').toUpperCase()} revenue`;
+    } else {
+      result.secondary_commission_rate = `$${secondaryRate.toLocaleString(undefined, { maximumFractionDigits: 2 })} per ${(secondaryMetric || 'WNC').toUpperCase()} point`;
+      result.secondary_rate_description = `$${secondaryRate.toLocaleString(undefined, { maximumFractionDigits: 2 })} per ${(secondaryMetric || 'WNC').toUpperCase()} point`;
+    }
+  }
+
+  result.ote = `$${((plan.base_salary || 0) + vc).toLocaleString()} (${plan.base_salary?.toLocaleString()} base + ${vc.toLocaleString()} variable)`;
+
+  return result;
+}
+
 function successResult(data: unknown): ToolResult {
   return {
     content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
@@ -79,6 +135,14 @@ export const compPlanTools = {
             per_page: args.per_page,
           }
         );
+        // Enrich each plan with computed rate display
+        if (result.data && Array.isArray(result.data)) {
+          const enriched = result.data.map((plan: CompPlan) => ({
+            ...plan,
+            _computed: computeRateDisplay(plan),
+          }));
+          return successResult({ ...result, data: enriched });
+        }
         return successResult(result);
       } catch (error) {
         return errorResult(error);
@@ -104,6 +168,12 @@ export const compPlanTools = {
         const result = await commishClient.get<SingleResponse<CompPlan>>(
           `/comp-plans/${args.id}`
         );
+        // Enrich with computed rate info for better AI interpretation
+        const plan = result.data;
+        if (plan) {
+          const computed = computeRateDisplay(plan);
+          return successResult({ ...result, _computed: computed });
+        }
         return successResult(result);
       } catch (error) {
         return errorResult(error);
@@ -242,6 +312,10 @@ export const compPlanTools = {
           "/comp-plans",
           body
         );
+        // Enrich with computed rate display
+        if (result.data) {
+          return successResult({ ...result, _computed: computeRateDisplay(result.data) });
+        }
         return successResult(result);
       } catch (error) {
         return errorResult(error);
