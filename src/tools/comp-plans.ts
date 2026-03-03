@@ -202,6 +202,7 @@ export const compPlanTools = {
       required: [],
     },
     handler: async (args: {
+      name?: string;
       plan_type?: string;
       user_id?: string;
       fiscal_year_id?: string;
@@ -220,6 +221,7 @@ export const compPlanTools = {
     }): Promise<ToolResult> => {
       try {
         const body: CreateCompPlanRequest = {
+          name: args.name,
           plan_type: args.plan_type,
           fiscal_year_id: args.fiscal_year_id,
           user_id: args.user_id,

@@ -68,7 +68,7 @@ export class CommishClient {
           throw new CommishApiRequestError(errorCode, errorMessage, response.status);
         }
 
-        if (response.status === 204) return {} as T;
+        if (response.status === 204) return { success: true, message: "Operation completed successfully (no content returned)" } as T;
         return (await response.json()) as T;
       } catch (error) {
         if (error instanceof CommishApiRequestError) throw error;
